@@ -53,6 +53,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Lock window title so hermes-search-stop.bat can find this process
+$host.UI.RawUI.WindowTitle = 'Hermes Web UI'
+
 $RepoRoot = Split-Path -Parent $PSCommandPath
 
 # === Load .env (mirroring start.sh's filtering) ========================
@@ -88,6 +92,12 @@ if (-not $Python) {
 if (-not $Python) {
     Write-Error 'Python 3 is required to run server.py (set HERMES_WEBUI_PYTHON or add python to PATH).'
     exit 1
+}
+
+# Prefer pythonw.exe (no console window) when available
+$Pythonw = Join-Path (Split-Path -Parent $Python) 'pythonw.exe'
+if (Test-Path $Pythonw) {
+    $Python = $Pythonw
 }
 
 # === Find Hermes Agent dir (server.py imports from it) =================
@@ -130,9 +140,15 @@ if (-not $AgentDir) {
 }
 
 # === Prefer the agent's venv Python if available =======================
-$agentVenvPython = Join-Path $AgentDir 'venv\Scripts\python.exe'
-if (Test-Path $agentVenvPython) {
-    $Python = $agentVenvPython
+# Use pythonw.exe (no console window) when available
+$agentVenvPythonw = Join-Path $AgentDir 'venv\Scripts\pythonw.exe'
+if (Test-Path $agentVenvPythonw) {
+    $Python = $agentVenvPythonw
+} else {
+    $agentVenvPython = Join-Path $AgentDir 'venv\Scripts\python.exe'
+    if (Test-Path $agentVenvPython) {
+        $Python = $agentVenvPython
+    }
 }
 
 # === Resolve bind + state defaults =====================================
@@ -181,6 +197,13 @@ Write-Host "[start.ps1] Agent dir:  $AgentDir"
 Write-Host "[start.ps1] State dir:  $env:HERMES_WEBUI_STATE_DIR"
 Write-Host "[start.ps1] Binding:    ${BindHostFinal}:${PortFinal}"
 Write-Host ""
+
+# Heartbeat — records startup time + import paths so the agent
+# can verify patches are live without asking about restarts.
+$HeartbeatScript = Join-Path $env:USERPROFILE '.hermes\scripts\heartbeat.py'
+if (Test-Path $HeartbeatScript) {
+    & $Python $HeartbeatScript webui 2>$null
+}
 
 $serverPath = Join-Path $RepoRoot 'server.py'
 if (-not (Test-Path $serverPath)) {

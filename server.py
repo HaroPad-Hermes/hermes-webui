@@ -8,13 +8,69 @@ import os
 import re
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# ── SIGPIPE handling ────────────────────────────────────────────────────────
+# === asyncio preload (Python 3.14 import-order workaround) ====================
+# During the full import chain (api.config→profiles→cron.jobs→scheduler),
+# Python 3.14's ``asyncio/__init__.py`` can hit a ``NameError: name
+# 'base_events' is not defined`` when asyncio is first imported inside a
+# deeply-nested cascade.  Importing it early (before any other deps) sidesteps
+# the race.  Harmless on unaffected Pythons.
+import asyncio  # noqa: F401
+
+# === No-console subprocess patch (Windows) ===================================
+# When running via pythonw.exe the WebUI has no console.  Any console-mode
+# child (git.exe, taskkill.exe, python3.11.exe, uv.exe, etc.) would normally
+# cause Windows to allocate a visible terminal window.  This monkey-patch
+# adds CREATE_NO_WINDOW to every subprocess.run/Popen/call so they stay
+# invisible.  Callers who intentionally set a different creationflags
+# (e.g. the gateway spawner which uses DETACHED_PROCESS) keep their explicit
+# flags — this only fills in a default.
+if sys.platform == 'win32':
+    _orig_run = subprocess.run
+    _orig_popen = subprocess.Popen
+    _orig_call = subprocess.call
+
+    _SPAWN_LOG = os.path.join(os.path.expanduser('~'), '.hermes', 'logs', '_spawn_debug.log')
+
+    def _log_subprocess_call(kind, args, kwargs):
+        try:
+            cmd = args[0] if args else kwargs.get('args', ['?'])
+            cmd_str = ' '.join(cmd[:3]) if isinstance(cmd, list) else str(cmd)[:80]
+            with open(_SPAWN_LOG, 'a') as f:
+                import traceback, time
+                f.write(f'{time.time():.0f}|{kind}|{cmd_str}\n')
+        except Exception:
+            pass
+
+    def _patched_run(*args, **kwargs):
+        _log_subprocess_call('run', args, kwargs)
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        return _orig_run(*args, **kwargs)
+
+    def _patched_popen(*args, **kwargs):
+        _log_subprocess_call('popen', args, kwargs)
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        return _orig_popen(*args, **kwargs)
+
+    def _patched_call(*args, **kwargs):
+        _log_subprocess_call('call', args, kwargs)
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        return _orig_call(*args, **kwargs)
+
+    subprocess.run = _patched_run
+    subprocess.Popen = _patched_popen
+    subprocess.call = _patched_call
+
+# === SIGPIPE handling ========================================================
 # Ignore SIGPIPE so a client closing the connection mid-response (browser tab
 # close, network drop, mobile backgrounding, a dropped long-poll, an
 # `/api/updates/check` timeout, etc.) does not terminate the whole server

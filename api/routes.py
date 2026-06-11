@@ -2816,6 +2816,36 @@ def _tool_calls_for_message_window(tool_calls, start_idx: int, message_count: in
     return filtered
 
 
+def _extract_tool_calls_from_messages(messages: list) -> list:
+    """Extract session-level tool_calls from per-message state.db rows.
+
+    State.db messages carry tool_calls as a per-message column (JSON array).
+    Reconstruct the session-level tool_calls list, preserving the original
+    assistant_msg_idx coordinate space so windowed pagination still works.
+    """
+    if not isinstance(messages, list):
+        return []
+    tool_calls = []
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        tc = msg.get("tool_calls")
+        if tc is None:
+            continue
+        if isinstance(tc, str):
+            try:
+                tc = json.loads(tc)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if not isinstance(tc, list):
+            continue
+        for call in tc:
+            if isinstance(call, dict):
+                call.setdefault("assistant_msg_idx", idx)
+                tool_calls.append(call)
+    return tool_calls
+
+
 def _message_counts_as_renderable_for_window(message) -> bool:
     """Return true when a paginated window should include this transcript row.
 
@@ -2910,7 +2940,7 @@ def _messages_start_with_visible_prefix(messages, prefix) -> bool:
         return False
 
 
-def _webui_sidecar_lineage_messages_for_display(session, *, max_hops: int = 20) -> list:
+def _webui_sidecar_lineage_messages_for_display(session, *, max_hops: int = 20, profile=None) -> list:
     """Return WebUI sidecar messages stitched across compression snapshots.
 
     WebUI compression continuations persist the archived transcript in a parent
@@ -2918,6 +2948,10 @@ def _webui_sidecar_lineage_messages_for_display(session, *, max_hops: int = 20) 
     child sidecar. Opening the child alone makes older turns look lost. Stitch
     only those snapshot parents for display; ordinary forks also carry
     ``parent_session_id`` but must remain independent conversations.
+
+    Parent snapshot messages are read from state.db when available; metadata-only
+    sidecar loads avoid the O(N) JSON parse for large session files.  Falls back
+    to full ``Session.load()`` only when state.db has no messages for a parent.
     """
     segments = []
     current = session
@@ -2927,7 +2961,7 @@ def _webui_sidecar_lineage_messages_for_display(session, *, max_hops: int = 20) 
         parent_id = str(getattr(current, "parent_session_id", "") or "").strip()
         if not parent_id or parent_id in seen or not is_safe_session_id(parent_id):
             break
-        parent = Session.load(parent_id)
+        parent = Session.load_metadata_only(parent_id)
         if not parent or not getattr(parent, "pre_compression_snapshot", False):
             break
         if not segments and _messages_start_with_visible_prefix(
@@ -2944,9 +2978,16 @@ def _webui_sidecar_lineage_messages_for_display(session, *, max_hops: int = 20) 
 
     merged = []
     for segment in reversed(segments):
+        parent_msgs = get_state_db_session_messages(
+            str(segment.session_id), profile=profile,
+        )
+        if not parent_msgs:
+            # Fall back to full sidecar load only when state.db is unavailable
+            full_parent = Session.load(str(segment.session_id))
+            parent_msgs = getattr(full_parent, "messages", []) or []
         merged = merge_session_messages_append_only(
             merged,
-            getattr(segment, "messages", []) or [],
+            parent_msgs,
             truncation_watermark=getattr(segment, "truncation_watermark", None),
         )
     return merge_session_messages_append_only(
@@ -5432,7 +5473,7 @@ def handle_get(handler, parsed) -> bool:
         expand_renderable = str(_expand_renderable).strip() in ("1", "true", "True")
         try:
             _t1 = _time.monotonic()
-            s = get_session(sid, metadata_only=(not load_messages))
+            s = get_session(sid, metadata_only=True)
             original_stream_id = getattr(s, "active_stream_id", None)
             _clear_stale_stream_state(s)
             cli_meta = _lookup_cli_session_metadata(sid) if _session_requires_cli_metadata_lookup(s) else {}
@@ -5475,11 +5516,32 @@ def handle_get(handler, parsed) -> bool:
                     # them chronologically and dedupe exact repeats.
                     _all_msgs = _merged_session_messages_for_display(s, cli_messages)
                 else:
-                    _all_msgs = merge_session_messages_append_only(
-                        _webui_sidecar_lineage_messages_for_display(s),
-                        state_db_messages,
-                        truncation_watermark=getattr(s, "truncation_watermark", None),
-                    )
+                    if state_db_messages:
+                        # Stitch pre-compression snapshot parent messages
+                        # from state.db so the visible transcript includes
+                        # the archived history.  Falls back to sidecar lineage
+                        # only when state.db is missing the parent messages.
+                        _parent_id = str(getattr(s, "parent_session_id", "") or "").strip()
+                        _parent_msgs = []
+                        if _parent_id and is_safe_session_id(_parent_id):
+                            _parent_check = Session.load_metadata_only(_parent_id)
+                            if _parent_check and getattr(_parent_check, "pre_compression_snapshot", False):
+                                _parent_msgs = get_state_db_session_messages(
+                                    _parent_id, profile=_session_profile,
+                                ) or []
+                        if _parent_msgs:
+                            _all_msgs = _parent_msgs + state_db_messages
+                        else:
+                            _all_msgs = state_db_messages
+                        # Populate session-level tool_calls from state.db messages
+                        # so the response carries them for windowed/paginated views.
+                        s.tool_calls = _extract_tool_calls_from_messages(state_db_messages)
+                    else:
+                        _all_msgs = merge_session_messages_append_only(
+                            _webui_sidecar_lineage_messages_for_display(s, profile=_session_profile),
+                            state_db_messages,
+                            truncation_watermark=getattr(s, "truncation_watermark", None),
+                        )
             else:
                 if is_messaging_session and cli_messages:
                     _all_msgs = _merged_session_messages_for_display(s, cli_messages)
@@ -11856,10 +11918,30 @@ def _handle_chat_start(handler, body, diag=None):
         except ValueError as e:
             return bad(handler, str(e))
         diag.stage("get_session") if diag else None
+        s = None
         try:
             s = get_session(body["session_id"])
         except KeyError:
-            return bad(handler, "Session not found", 404)
+            pass
+        if s is None:
+            # Session has no JSON sidecar — likely a CLI/TUI session only in
+            # state.db.  Auto-import it so the chat can proceed.
+            sid = body["session_id"]
+            cli_meta = _lookup_cli_session_metadata(sid)
+            msgs = get_cli_session_messages(sid)
+            if msgs and cli_meta:
+                s = import_cli_session(
+                    sid,
+                    title=cli_meta.get("title", "Imported Session"),
+                    messages=msgs,
+                    model=cli_meta.get("model", "unknown"),
+                    profile=cli_meta.get("profile"),
+                    created_at=cli_meta.get("created_at"),
+                    updated_at=cli_meta.get("updated_at"),
+                    parent_session_id=cli_meta.get("parent_session_id"),
+                )
+            if s is None:
+                return bad(handler, "Session not found", 404)
         diag.stage("validate_profile") if diag else None
         requested_profile = str(body.get("profile") or "").strip()
         if requested_profile:

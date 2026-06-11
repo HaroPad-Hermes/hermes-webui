@@ -3184,7 +3184,16 @@ def _save_models_cache_to_disk(cache: dict) -> None:
         tmp = str(_models_cache_path) + f".{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
-        os.rename(tmp, str(_models_cache_path))
+        # Retry on Windows access-denied (Defender scanning race)
+        for attempt in range(5):
+            try:
+                os.rename(tmp, str(_models_cache_path))
+                break
+            except OSError as e:
+                if getattr(e, 'winerror', None) != 5 or attempt == 4:
+                    raise
+                import time as _t
+                _t.sleep(0.05 * (2 ** attempt))
     except Exception:
         pass  # Non-fatal -- cache will rebuild on next call
 

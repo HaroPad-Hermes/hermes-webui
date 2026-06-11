@@ -57,6 +57,36 @@ _STALE_TMP_AGE_SECONDS = 3600  # 1 hour
 # Serializes index writers so concurrent Session.save() calls cannot race on
 # stale baselines while still allowing LOCK to be released before disk I/O.
 _INDEX_WRITE_LOCK = threading.RLock()
+
+
+# ── Atomic replace with Windows Defender retry ──────────────────────────
+# On Windows, real-time anti-malware scanners (Defender, etc.) briefly open
+# every newly created file for scanning.  When os.replace() fires before the
+# scanner closes the file, MoveFileExW returns ERROR_ACCESS_DENIED (5).  This
+# is a well-known race in Chrome, Node.js, and Python tools that use the
+# temp-file → atomic-rename pattern.  Retry with exponential backoff resolves
+# it without needing filesystem exclusions.  Non-Windows / non-access errors
+# are re-raised immediately to avoid hiding real permission problems.
+# ─────────────────────────────────────────────────────────────────────────
+
+import time as _time  # noqa: E402
+
+def _atomic_replace_with_retry(tmp_path, target_path, max_attempts=5):
+    """os.replace() with retry for Windows Defender access-denied races."""
+    for attempt in range(max_attempts):
+        try:
+            os.replace(tmp_path, target_path)
+            return
+        except OSError as e:
+            is_access_denied = (
+                getattr(e, 'winerror', None) == 5  # ERROR_ACCESS_DENIED
+                or getattr(e, 'errno', None) == 13  # EACCES
+            )
+            if not is_access_denied or attempt == max_attempts - 1:
+                raise
+            _time.sleep(0.05 * (2 ** attempt))  # 50, 100, 200, 400 ms
+
+
 _SESSION_INDEX_REBUILD_LOCK = threading.Lock()
 _SESSION_INDEX_REBUILD_THREAD = None
 
@@ -243,7 +273,7 @@ def _write_session_index(updates=None):
                     f.write(_payload)
                     f.flush()
                     os.fsync(f.fileno())
-                os.replace(_tmp, SESSION_INDEX_FILE)
+                _atomic_replace_with_retry(_tmp, SESSION_INDEX_FILE)
             except Exception:
                 # Best-effort cleanup of stale tmp on failure
                 try:
@@ -289,7 +319,7 @@ def _write_session_index(updates=None):
                     f.write(_payload)
                     f.flush()
                     os.fsync(f.fileno())
-                os.replace(_tmp, SESSION_INDEX_FILE)
+                _atomic_replace_with_retry(_tmp, SESSION_INDEX_FILE)
             except Exception:
                 try:
                     _tmp.unlink(missing_ok=True)
@@ -328,7 +358,7 @@ def prune_session_from_index(session_id: str) -> None:
                     f.write(_payload)
                     f.flush()
                     os.fsync(f.fileno())
-                os.replace(_tmp, SESSION_INDEX_FILE)
+                _atomic_replace_with_retry(_tmp, SESSION_INDEX_FILE)
             except Exception:
                 try:
                     _tmp.unlink(missing_ok=True)
@@ -774,7 +804,7 @@ class Session:
                 f.write(payload)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, self.path)
+            _atomic_replace_with_retry(tmp, self.path)
         except Exception:
             try:
                 tmp.unlink(missing_ok=True)

@@ -2798,7 +2798,7 @@ body.resizing .sidebar{transition:none!important;}
 .skill-linked-file:hover{background:var(--hover-bg);}
 .tool-card-row{margin:0;padding:1px 0;}
 .tool-call-group{margin:4px 0 4px var(--msg-rail);max-width:var(--msg-max);border-left:1px solid var(--border-subtle);}
-.tool-call-group-summary{width:100%;display:flex;align-items:center;gap:7px;padding:3px 8px;margin-left:-8px;border:0;background:transparent;color:var(--muted);cursor:pointer;text-align:left;font:inherit;font-size:13px;line-height:1.45;border-radius:7px;}
+.tool-call-group-summary{width:100%;display:flex;align-items:center;gap:6px;padding:2px 8px;margin-left:-8px;border:0;background:transparent;color:var(--muted);cursor:pointer;text-align:left;font:inherit;font-size:12px;line-height:1.4;border-radius:5px;}
 .tool-call-group-summary:hover{background:var(--hover-bg);color:var(--text);}
 .tool-call-group-duration{margin-left:auto;opacity:.62;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .tool-call-group-chevron{margin-left:auto;opacity:.4;display:inline-flex;transition:transform .18s ease;}
@@ -2807,10 +2807,34 @@ body.resizing .sidebar{transition:none!important;}
 .tool-call-group-body{display:block;padding-left:var(--space-3);}
 .tool-call-group.tool-call-group-collapsed .tool-call-group-body,
 .agent-activity-group.tool-call-group-collapsed .tool-call-group-body{display:none;}
-.activity{padding-left:var(--msg-rail);margin:4px 0 14px;max-width:var(--msg-max);}
+.activity{padding-left:var(--msg-rail);margin:2px 0 6px;max-width:var(--msg-max);}
 .tool-worklog-group{
-  margin:4px 0 14px var(--msg-rail);
+  margin:2px 0 6px var(--msg-rail);
   border-left:0;
+}
+/* Attach activity group to thinking card above it — single visual unit */
+.assistant-segment:has(.thinking-card) + .tool-worklog-group {
+  margin-top: 0;
+  padding-top: 0;
+  border: 1px solid var(--accent-bg-strong);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--accent-bg);
+}
+.assistant-segment:has(.thinking-card) + .tool-worklog-group .tool-call-group-summary {
+  padding-left: 24px;
+}
+/* Subtle dividers between rows inside the attached activity group */
+.assistant-segment:has(.thinking-card) + .tool-worklog-group .tool-worklog-list > * + * {
+  border-top: 1px solid var(--border-subtle);
+}
+.assistant-segment:has(.thinking-card) + .tool-worklog-group .wl-step-tools .tool-card-row {
+  padding: 2px 8px;
+  margin: 0;
+  border: 0;
+}
+.assistant-segment:has(.thinking-card) + .tool-worklog-group .wl-step-tools .tool-card-row + .tool-card-row {
+  border-top: 1px solid var(--border-subtle);
 }
 .live-worklog{
   margin:4px 0 14px;
@@ -4493,14 +4517,18 @@ main.main > #mainPlugin{display:none;}
   border: 1px solid var(--accent-bg-strong);
   border-radius: 8px;
   padding: 0;
-  margin: 3px 0 3px var(--msg-rail);
+  margin: 2px 0 0 var(--msg-rail);
   transition: border-color .15s, background .15s;
+}
+/* Only flatten bottom when an activity group follows */
+.assistant-segment:has(.thinking-card):has(+ .tool-worklog-group) .thinking-card {
+  border-radius: 8px 8px 0 0;
 }
 .thinking-card:hover {
   border-color: var(--accent-hover);
   background: var(--accent-bg);
 }
-.thinking-card-header { display:flex; align-items:center; gap:8px; padding: 5px 10px; color: var(--accent-text); font-size: 12px; font-weight: 600; opacity: .85; }
+.thinking-card-header { display:flex; align-items:center; gap:7px; padding: 3px 10px; color: var(--accent-text); font-size: 12px; font-weight: 600; opacity: .85; }
 .thinking-card-header:hover { opacity: 1; }
 .thinking-card-icon { opacity: .7; }
 .thinking-card-body {

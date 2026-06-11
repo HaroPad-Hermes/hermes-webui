@@ -6407,7 +6407,12 @@ function _worklogReasonHtmlFromAnchor(anchor, textOverride){
   if(!anchor||!anchor.matches||!anchor.matches('.assistant-segment')) return '';
   const body=anchor.querySelector&&anchor.querySelector('.msg-body');
   const hasOverride=arguments.length>1;
-  const text=hasOverride?String(textOverride||''):((body?body.textContent:anchor.textContent)||'');
+  // When a segment has a thinking card but no msg-body, don't fall back to
+  // anchor.textContent — that would capture the thinking card's text and
+  // duplicate it inside the activity/worklog group.
+  const hasThinkingCard=!body&&anchor.querySelector&&!!anchor.querySelector('.thinking-card');
+  const fallback=hasThinkingCard?'':(anchor.textContent||'');
+  const text=hasOverride?String(textOverride||''):((body?body.textContent:fallback)||'');
   if(!String(text||'').trim()) return '';
   if(String(text||'').trim()==='(empty)') return '';
   if(hasOverride) return _worklogReasonHtmlFromText(text);
@@ -8033,6 +8038,11 @@ function renderMessages(options){
       }
     }
     const isUser=m.role==='user';
+    // Fallback: read reasoning from structured fields (reasoning, reasoning_content)
+    // for providers like DeepSeek that send reasoning in dedicated fields, not inline tags.
+    if(!thinkingText && !isUser && !isSimplifiedToolCalling()){
+      thinkingText = _assistantReasoningPayloadText(m);
+    }
     if(!isUser&&_isMarkerOnlyAssistantCompressionMessage(m)){
       content='**Error:** No response received after context compression. Please retry.';
     }
@@ -8515,7 +8525,11 @@ function renderMessages(options){
       if(!cards.length&&!anchorReasonHtml&&!thinkingText) continue;
       const anchorTurn=anchorRow.closest('.assistant-turn');
       if(!anchorTurn) continue;
-      let state=activityByTurn.get(anchorTurn);
+      // Key by both turn AND aIdx so tool calls from different assistant
+      // messages get separate activity groups, even when all messages share
+      // a single assistant turn (one user message → many assistant messages).
+      const turnKey=`${anchorTurn.dataset?.turnIndex||''}:a${aIdx}`;
+      let state=activityByTurn.get(turnKey);
       if(!state){
         const includeTurnDuration=!durationAssignedTurns.has(anchorTurn);
         if(includeTurnDuration) durationAssignedTurns.add(anchorTurn);
@@ -8535,7 +8549,7 @@ function renderMessages(options){
         if(!list) continue;
         list.innerHTML='';
         state={group,cards:[],seenReasons:new Set(),seenTools:new Set()};
-        activityByTurn.set(anchorTurn,state);
+        activityByTurn.set(turnKey,state);
       }
       state.cards.push(...cards);
       _appendWorklogStep(state.group, anchorRow, cards, thinkingText, {

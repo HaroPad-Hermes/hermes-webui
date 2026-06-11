@@ -3084,7 +3084,23 @@ def _restore_display_reasoning_metadata(previous_messages, updated_messages):
 
 
 def _session_context_messages(session):
-    """Return model-facing history without assuming it matches the UI transcript."""
+    """Return model-facing history without assuming it matches the UI transcript.
+
+    When both ``context_messages`` and state.db are available, prefer state.db:
+    its messages have complete tool_call/tool_result pairs in consecutive order,
+    while the sidecar's ``context_messages`` can carry orphaned tool_calls that
+    DeepSeek rejects (call_id exists elsewhere but not immediately after the
+    assistant message).
+    """
+    sid = getattr(session, 'session_id', None)
+    if sid:
+        from api.models import get_state_db_session_messages
+        try:
+            db_msgs = get_state_db_session_messages(str(sid))
+            if db_msgs:
+                return db_msgs
+        except Exception:
+            pass
     context_messages = getattr(session, 'context_messages', None)
     if isinstance(context_messages, list) and context_messages:
         return context_messages

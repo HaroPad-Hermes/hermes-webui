@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -26,6 +27,10 @@ from urllib.parse import urlparse
 from api.config import REPO_ROOT, STREAMS, STREAMS_LOCK
 
 logger = logging.getLogger(__name__)
+
+# Suppress console windows when git (a console app) is spawned from
+# pythonw.exe.  CREATE_NO_WINDOW is ignored on non-Windows.
+_CREATION_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 # Lazy -- may be None if agent not found
 try:
@@ -164,10 +169,17 @@ def _run_git(args, cwd, timeout=10):
     surface actionable git error messages instead of empty strings.
     """
     try:
+        import time as _time
+        _ef = getattr(subprocess, 'run', None)
+        _has_patch = _ef is not None and getattr(_ef, '__name__', '') == '_patched_run'
+        _has_cf = _CREATION_FLAGS != 0
+        with open(os.path.expanduser('~/.hermes/logs/_git_debug.log'), 'a') as _f:
+            _f.write(f'{_time.time():.0f}|git_run|args={args[:3]}|has_patch={_has_patch}|has_cf={_has_cf}|creationflags={_CREATION_FLAGS:#x}\n')
         r = subprocess.run(
             ['git'] + args, cwd=str(cwd), capture_output=True,
             text=True, timeout=timeout,
             encoding='utf-8', errors='replace',
+            creationflags=_CREATION_FLAGS,
         )
         # On non-UTF-8 locales (e.g. Chinese Windows GBK), a binary git
         # output that fails to decode used to leave r.stdout = None and crash
