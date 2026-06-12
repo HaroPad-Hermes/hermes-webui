@@ -3261,12 +3261,14 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
             const hasTu=Array.isArray(m.content)&&m.content.some(p=>p&&p.type==='tool_use');
             return hasTc||hasPartialTc||hasTu;
           });
-          if(!hasMessageToolMetadata&&d.session.tool_calls&&d.session.tool_calls.length){
+          if(d.session.tool_calls&&d.session.tool_calls.length){
             S.toolCalls=d.session.tool_calls.map(tc=>tc);
             S.toolCalls=_mergeSettledToolCallsWithLiveMetadata(d.session.tool_calls);
+          } else if(hasMessageToolMetadata){
+            S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
+            S.toolCalls=[];
           } else {
-            if(hasMessageToolMetadata) S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
-            S.toolCalls=hasMessageToolMetadata?[]:S.toolCalls.map(tc=>({...tc,done:true}));
+            S.toolCalls=S.toolCalls.map(tc=>({...tc,done:true}));
           }
           if(typeof renderSessionArtifacts==='function') renderSessionArtifacts();
           if(uploaded.length){
@@ -3768,11 +3770,13 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           const hasTu=Array.isArray(m.content)&&m.content.some(p=>p&&p.type==='tool_use');
           return hasTc||hasPartialTc||hasTu;
         });
-        if(!hasMessageToolMetadata&&session.tool_calls&&session.tool_calls.length){
+        if(session.tool_calls&&session.tool_calls.length){
           S.toolCalls=_mergeSettledToolCallsWithLiveMetadata(session.tool_calls||[]);
-        }else{
-          if(hasMessageToolMetadata) S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
+        }else if(hasMessageToolMetadata){
+          S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
           S.toolCalls=[];
+        }else{
+          S.toolCalls=S.toolCalls.map(tc=>({...tc,done:true}));
         }
         if(isSessionViewed) _markSessionViewed(completedSid, session.message_count ?? S.messages.length);
         // Expand render window so the settled render doesn't hide Activity.
