@@ -8898,7 +8898,7 @@ function renderMessages(options){
       state.cards.push(...cards);
       _appendWorklogStep(state.group, anchorRow, cards, thinkingText, {
         live:false,
-        includeAnchorReason:!!includeAnchorReason&&!!anchorReasonHtml,
+        includeAnchorReason:false,
         thinkingKey:thinkingText?`thinking:${_normalizeThinkingEchoCompare(thinkingText)}`:'',
         seenReasons:state.seenReasons,
         seenTools:state.seenTools,
