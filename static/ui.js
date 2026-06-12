@@ -8436,8 +8436,11 @@ function renderMessages(options){
       if(_reasoningPayload) thinkingText=_reasoningPayload;
     }
     if(thinkingText&&window._showThinking!==false){
-      if(isSimplifiedToolCalling()&&_assistantThinkingBelongsInWorklog(m, rawIdx, toolCallAssistantIdxs)) assistantThinking.set(rawIdx, thinkingText);
-      else if(window._showThinking!==false) seg.insertAdjacentHTML('beforeend', _thinkingCardHtml(thinkingText));
+      if(isSimplifiedToolCalling()&&_assistantThinkingBelongsInWorklog(m, rawIdx, toolCallAssistantIdxs)){
+        assistantThinking.set(rawIdx, thinkingText);
+      }else if(window._showThinking!==false){
+        seg.insertAdjacentHTML('beforeend', _thinkingCardHtml(thinkingText));
+      }
     }
     const hasVisibleBody=!!(String(content||'').trim()||filesHtml||statusHtml);
     if(statusHtml){
@@ -8764,16 +8767,72 @@ function renderMessages(options){
       const hasValue=value!==undefined&&value!==null&&String(value)!==''&&String(value)!=='0';
       return hasValue?String(value):'';
     };
+    // Build a lookup: for each message index, what's the most recent
+    // thinking-card message (reasoning but no content) that precedes it?
+    // Tool calls between two thinking cards share the first card's dropdown.
+    const _thinkingCardAnchor=[]; // _thinkingCardAnchor[rawIdx] = thinking-card rawIdx
+    let _lastThinkingIdx=-1;
+    for(let _ri=0;_ri<S.messages.length;_ri++){
+      const _m=S.messages[_ri];
+      if(_m&&_m.role==='assistant'&&(_m.reasoning||_m.reasoning_content)&&!String(_m.content||'').trim()){
+        _lastThinkingIdx=_ri;
+      }
+      _thinkingCardAnchor[_ri]=_lastThinkingIdx;
+    }
     for(const tc of (S.toolCalls||[])){
       if(!tc) continue;
       const aIdx=tc.assistant_msg_idx!==undefined?parseInt(tc.assistant_msg_idx):-1;
       const segmentSeq=normalizeToken(tc.activitySegmentSeq);
       const burstId=normalizeToken(tc.activityBurstId);
-      const key=segmentSeq?`segment:${segmentSeq}`:(burstId?`burst:${burstId}`:`assistant:${aIdx}`);
+      // Group by the most recent thinking card, so each thinking card
+      // gets its own dropdown with the tool calls that follow it.
+      const thinkingAnchor=segmentSeq||burstId?'':(_thinkingCardAnchor[aIdx]>=0?`thinking:${_thinkingCardAnchor[aIdx]}`:`assistant:${aIdx}`);
+      const key=segmentSeq?`segment:${segmentSeq}`:(burstId?`burst:${burstId}`:thinkingAnchor);
       const entry=ensureActivityBucket(key,aIdx,segmentSeq,burstId);
       entry.cards.push(tc);
       entry.includeAnchorReason=true;
     }
+    // Fallback: also process per-message tool_calls. S.toolCalls only contains
+    // tool calls from live streaming; after page reload, recent tool calls
+    // exist only in m.tool_calls and must be included for correct grouping.
+    // DISABLED for now — was causing duplicate nested groups.
+    /*
+    // Build a set of aIdx already covered by S.toolCalls to avoid duplicates.
+    const _tcCovered=new Set();
+    for(const tc of (S.toolCalls||[])){
+      if(tc&&tc.assistant_msg_idx!==undefined) _tcCovered.add(tc.assistant_msg_idx);
+    }
+    for(let _ri=0;_ri<S.messages.length;_ri++){
+      const _m=S.messages[_ri];
+      if(!_m||_m.role!=='assistant') continue;
+      if(_tcCovered.has(_ri)) continue; // already in S.toolCalls
+      const _tcs=_m.tool_calls;
+      if(!Array.isArray(_tcs)||!_tcs.length) continue;
+      const segmentSeq='';
+      const burstId='';
+      const thinkingAnchor=_thinkingCardAnchor[_ri]>=0?`thinking:${_thinkingCardAnchor[_ri]}`:`assistant:${_ri}`;
+      const key=thinkingAnchor;
+      const entry=ensureActivityBucket(key,_ri,segmentSeq,burstId);
+      for(const _tc of _tcs){
+        if(!_tc||typeof _tc!=='object') continue;
+        const fn=_tc.function||{};
+        const name=fn.name||_tc.name||'tool';
+        let args={};
+        try{args=JSON.parse(fn.arguments||'{}');}catch(e){}
+        const tid=_tc.id||_tc.call_id||'';
+        entry.cards.push({
+          name,
+          snippet:'',
+          is_diff:false,
+          tid,
+          assistant_msg_idx:_ri,
+          args:_toolArgsSnapshot(args),
+          done:true,
+        });
+        entry.includeAnchorReason=true;
+      }
+    }
+    */
     for(const aIdx of assistantThinking.keys()){
       const seg=assistantSegments.get(aIdx);
       const segmentSeq=seg&&seg.getAttribute('data-live-segment-seq')||'';
@@ -8816,32 +8875,26 @@ function renderMessages(options){
       if(!cards.length&&!anchorReasonHtml&&!thinkingText) continue;
       const anchorTurn=anchorRow.closest('.assistant-turn');
       if(!anchorTurn) continue;
-      // Key by both turn AND aIdx so tool calls from different assistant
-      // messages get separate activity groups, even when all messages share
-      // a single assistant turn (one user message → many assistant messages).
-      const turnKey=`${anchorTurn.dataset?.turnIndex||''}:a${aIdx}`;
-      let state=activityByTurn.get(turnKey);
-      if(!state){
-        const includeTurnDuration=!durationAssignedTurns.has(anchorTurn);
-        if(includeTurnDuration) durationAssignedTurns.add(anchorTurn);
-        const activityKey=`assistant:${aIdx}`;
-        const anchorIsWorklogSource=anchorRow.classList&&anchorRow.classList.contains('assistant-segment-worklog-source');
-        const group=ensureActivityGroup(anchorParent,{
-          collapsed:true,
-          anchor:anchorRow,
-          beforeAnchor:!!thinkingText&&!anchorIsWorklogSource,
-          syncAnchorReason:anchorIsWorklogSource,
-          activityKey,
-          burstId:burstId||'',
-          segmentSeq:segmentSeq||'',
-          turnDuration:includeTurnDuration?_turnDurationForAnchor(anchorRow):undefined,
-        });
-        const list=_toolWorklogListEl(group);
-        if(!list) continue;
-        list.innerHTML='';
-        state={group,cards:[],seenReasons:new Set(),seenTools:new Set()};
-        activityByTurn.set(turnKey,state);
-      }
+      // Always create a fresh state per activity bucket — reusing state
+      // across buckets would pool all tool calls into one group.
+      const includeTurnDuration=!durationAssignedTurns.has(anchorTurn);
+      if(includeTurnDuration) durationAssignedTurns.add(anchorTurn);
+      const activityKey=`assistant:${aIdx}:${thinkingIdx!==null?`t${thinkingIdx}`:''}:${Date.now()}`;
+      const anchorIsWorklogSource=anchorRow.classList&&anchorRow.classList.contains('assistant-segment-worklog-source');
+      const group=ensureActivityGroup(anchorParent,{
+        collapsed:true,
+        anchor:anchorRow,
+        beforeAnchor:!!thinkingText&&!anchorIsWorklogSource,
+        syncAnchorReason:anchorIsWorklogSource,
+        activityKey,
+        burstId:burstId||'',
+        segmentSeq:segmentSeq||'',
+        turnDuration:includeTurnDuration?_turnDurationForAnchor(anchorRow):undefined,
+      });
+      const list=_toolWorklogListEl(group);
+      if(!list) continue;
+      list.innerHTML='';
+      const state={group,cards:[],seenReasons:new Set(),seenTools:new Set()};
       state.cards.push(...cards);
       _appendWorklogStep(state.group, anchorRow, cards, thinkingText, {
         live:false,
@@ -8850,6 +8903,8 @@ function renderMessages(options){
         seenReasons:state.seenReasons,
         seenTools:state.seenTools,
       });
+      _syncToolCallGroupSummary(state.group);
+      continue;
     }
     activityByTurn.forEach(state=>{
       _syncToolCallGroupSummary(state.group);

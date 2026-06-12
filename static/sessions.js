@@ -3502,7 +3502,7 @@ const _sessionTimeRefreshMs = 60000;
 // already pushes invalidations in real time; this poll exists only as a
 // fallback for the case where SSE is broken/unavailable. Bump to 30 s
 // to keep the safety net without turning it into a primary refresh path.
-const _activeSessionExternalRefreshMs = 30000;
+const _activeSessionExternalRefreshMs = 120000; // 2 min — safety net only
 let _streamingPollTimer = null;
 let _sessionTimeRefreshTimer = null;
 let _activeSessionExternalRefreshTimer = null;
@@ -3564,7 +3564,10 @@ async function refreshActiveSessionIfExternallyUpdated(reason){
     if(S.busy || S.activeStreamId) return;
     const remoteCount = Number(data.session.message_count || 0);
     const remoteLast = Number(data.session.last_message_at || data.session.updated_at || 0);
-    if(remoteCount > localCount || remoteLast > localLast){
+    // Only reload when new messages actually arrived (message_count increased)
+    // AND it's not the currently-viewed session — force-reloading the same
+    // session destroys opened cards and scrolls to bottom unnecessarily.
+    if(remoteCount > localCount && currentSid !== sid){
       await loadSession(sid, {force:true, externalRefreshReason:reason||'poll'});
       if(typeof renderSessionList==='function') void renderSessionList();
     }
@@ -3582,12 +3585,17 @@ function ensureActiveSessionExternalRefreshPoll(){
   }, _activeSessionExternalRefreshMs);
   if(typeof document !== 'undefined' && !document._hermesExternalRefreshVisibilityHook){
     document.addEventListener('visibilitychange', () => {
-      if(!document.hidden) void refreshActiveSessionIfExternallyUpdated('visible');
+      // Disabled: tab refocus should not trigger a session reload.
+      // The 30s poll and focus event handle real updates without
+      // disrupting the UI (scrolling, closing cards) on every switch.
     });
     document._hermesExternalRefreshVisibilityHook = true;
   }
   if(typeof window !== 'undefined' && !window._hermesExternalRefreshFocusHook){
-    window.addEventListener('focus', () => { void refreshActiveSessionIfExternallyUpdated('focus'); });
+    window.addEventListener('focus', () => {
+      // Disabled: same reason as visibilitychange — refocus
+      // should not trigger disruptive session reloads.
+    });
     window._hermesExternalRefreshFocusHook = true;
   }
 }
