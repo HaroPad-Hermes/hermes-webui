@@ -9386,7 +9386,7 @@ function _syncToolRowsContainer(tools, isLiveWorklog){
   _unwrapNestedToolGroups(tools);
   rows.forEach(row=>{ if(row.parentElement) row.remove(); });
   tools.querySelectorAll(':scope > .tool-card-row').forEach(row=>row.remove());
-  const shouldGroup=tools.classList.contains('wl-step-tools') && rows.length>1;
+  const shouldGroup=false;
   if(!shouldGroup){
     rows.forEach(row=>tools.appendChild(row));
     return;
