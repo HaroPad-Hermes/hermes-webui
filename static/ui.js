@@ -8884,7 +8884,7 @@ function renderMessages(options){
       const group=ensureActivityGroup(anchorParent,{
         collapsed:true,
         anchor:anchorRow,
-        beforeAnchor:!!thinkingText&&!anchorIsWorklogSource,
+        beforeAnchor:false,
         syncAnchorReason:anchorIsWorklogSource,
         activityKey,
         burstId:burstId||'',
