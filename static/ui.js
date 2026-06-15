@@ -8903,21 +8903,32 @@ function renderMessages(options){
         seenReasons:state.seenReasons,
         seenTools:state.seenTools,
       });
-      // If the anchor message has a reasoning payload, extract the thinking
-      // card from inside the segment and move it as a standalone sibling
-      // before the activity group, so thinking appears above tool calls.
-      if(!thinkingText){
-        const anchorCard=anchorRow.querySelector('.thinking-card');
-        if(anchorCard && group.parentElement){
-          group.parentElement.insertBefore(anchorCard, group);
-        }
-      }
       _syncToolCallGroupSummary(state.group);
       continue;
     }
     activityByTurn.forEach(state=>{
       _syncToolCallGroupSummary(state.group);
     });
+    // After all activity groups are built, move every .thinking-card out of
+    // its segment and place it as a standalone sibling before the next
+    // .tool-worklog-group (its companion tool calls).  This prevents
+    // thinking-only segments from stacking cards at the bottom.
+    const allGroups=[...inner.querySelectorAll('.tool-worklog-group')];
+    for(const group of allGroups){
+      const prev=group.previousElementSibling;
+      // Already have a card before this group? Skip.
+      if(prev&&prev.classList.contains('thinking-card')) continue;
+      // Find the nearest preceding assistant segment that has a thinking card
+      let seg=group.previousElementSibling;
+      while(seg&&!seg.classList.contains('assistant-segment')){
+        seg=seg.previousElementSibling;
+      }
+      if(!seg) continue;
+      const card=seg.querySelector('.thinking-card');
+      if(card){
+        group.parentElement.insertBefore(card, group);
+      }
+    }
   }
   // Render per-turn duration and optional token usage on assistant messages.
   // Duration stays visible even when token usage is disabled, because it answers
