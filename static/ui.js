@@ -8937,6 +8937,22 @@ function renderMessages(options){
         group.parentElement.insertBefore(card, group);
       }
     }
+    // Second pass: move any remaining standalone .thinking-card siblings
+    // (whose worklog group was removed because it had no tool calls) into
+    // their preceding segment before the msg-body, so they appear above
+    // the response text rather than below it.
+    const orphanCards=inner.querySelectorAll('.thinking-card');
+    for(const card of orphanCards){
+      if(card.parentElement.classList.contains('assistant-segment')) continue;
+      const next=card.nextElementSibling;
+      if(next&&next.classList.contains('tool-worklog-group')) continue;
+      const seg=card.previousElementSibling;
+      if(seg&&seg.classList.contains('assistant-segment')){
+        const body=seg.querySelector('.msg-body');
+        if(body) seg.insertBefore(card, body);
+        else seg.appendChild(card);
+      }
+    }
   }
   // Render per-turn duration and optional token usage on assistant messages.
   // Duration stays visible even when token usage is disabled, because it answers
