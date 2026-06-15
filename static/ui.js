@@ -10659,19 +10659,9 @@ function appendThinking(text='', options){
       card.setAttribute('data-live-thinking-key',thinkingKey);
       if(segmentSeq) card.setAttribute('data-live-segment-seq',segmentSeq);
       if(burstId) card.setAttribute('data-activity-burst-id',burstId);
-      // Find the matching companion assistant segment (same segmentSeq
-      // or burstId), or append at the end when the segment hasn't been
-      // created yet.  When the matching segment arrives later it will be
-      // appended after this card, preserving correct order.
-      let refNode=null;
-      if(segmentSeq){
-        refNode=blocks.querySelector(`[data-live-assistant="1"][data-live-segment-seq="${CSS.escape(segmentSeq)}"]`);
-      }
-      if(!refNode&&burstId){
-        refNode=blocks.querySelector(`[data-live-assistant="1"][data-activity-burst-id="${CSS.escape(burstId)}"]`);
-      }
-      if(refNode){
-        blocks.insertBefore(card, refNode);
+      const liveSegs=blocks.querySelectorAll('[data-live-assistant="1"]');
+      if(liveSegs.length>0){
+        blocks.insertBefore(card, liveSegs[liveSegs.length-1]);
       } else {
         blocks.appendChild(card);
       }
