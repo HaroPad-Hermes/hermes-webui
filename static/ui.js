@@ -10650,10 +10650,9 @@ function appendThinking(text='', options){
     let card=blocks.querySelector(`.thinking-card[data-live-thinking-key="${CSS.escape(thinkingKey)}"]`);
     if(!card){
       // Create a new .thinking-card for this burst and insert it before
-      // the last live assistant segment (or at the end of blocks).
-      const html=_thinkingMarkup(text);
+      // its matching assistant segment (or at the end of blocks).
       const tmp=document.createElement('div');
-      tmp.innerHTML=html;
+      tmp.innerHTML=_thinkingCardHtml(text, false);
       card=tmp.firstElementChild;
       if(!card) return;
       card.setAttribute('data-live-thinking-key',thinkingKey);
@@ -10676,8 +10675,24 @@ function appendThinking(text='', options){
         blocks.appendChild(card);
       }
     } else {
-      // Update existing card content.
-      _renderThinkingInto(card, text);
+      // Update existing card: update <pre> text if card has proper
+      // structure, otherwise rebuild to avoid innerHTML nesting.
+      const pre=card.querySelector('.thinking-card-body pre');
+      if(pre){
+        const clean=_sanitizeThinkingDisplayText(text);
+        if(clean) pre.textContent=clean;
+      } else {
+        const clean=_sanitizeThinkingDisplayText(text);
+        if(clean){
+          const tmp=document.createElement('div');
+          tmp.innerHTML=_thinkingCardHtml(text, false);
+          const fresh=tmp.firstElementChild;
+          if(fresh){
+            for(const attr of [...card.attributes]) fresh.setAttribute(attr.name, attr.value);
+            card.replaceWith(fresh);
+          }
+        }
+      }
     }
     if(typeof scrollIfPinned==='function') scrollIfPinned();
     return;
