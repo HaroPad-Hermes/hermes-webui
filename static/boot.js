@@ -1797,7 +1797,7 @@ function applyBotName(){
     window._notificationsEnabled=!!s.notifications_enabled;
     window._whatsNewSummaryEnabled=!!s.whats_new_summary_enabled;
     window._showThinking=s.show_thinking!==false;
-    window._simplifiedToolCalling=false;
+    window._simplifiedToolCalling=true;
     window._terminalAutoExpandOnOutput=!!s.terminal_auto_expand_on_output;
     window._worklogDetailsExpandedByDefault=!!(
       Object.prototype.hasOwnProperty.call(s,'worklog_details_expanded_default')
@@ -1902,7 +1902,7 @@ function applyBotName(){
     window._notificationsEnabled=false;
     window._whatsNewSummaryEnabled=false;
     window._showThinking=true;
-    window._simplifiedToolCalling=false;
+    window._simplifiedToolCalling=true;
     window._terminalAutoExpandOnOutput=false;
     window._sessionJumpButtonsEnabled=false;
     window._sidebarDensity='compact';

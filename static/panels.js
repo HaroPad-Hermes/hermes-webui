@@ -7762,7 +7762,7 @@ function _applySavedSettingsUi(saved, body, opts){
   window._notificationsEnabled=body.notifications_enabled;
   window._whatsNewSummaryEnabled=!!body.whats_new_summary_enabled;
   window._showThinking=body.show_thinking!==false;
-  window._simplifiedToolCalling=false;
+  window._simplifiedToolCalling=true;
   window._terminalAutoExpandOnOutput=!!body.terminal_auto_expand_on_output;
   window._sessionJumpButtonsEnabled=!!body.session_jump_buttons;
   if(typeof _applySessionNavigationPrefs==='function') _applySessionNavigationPrefs();
