@@ -6817,9 +6817,13 @@ function _appendWorklogStep(group, anchor, cards, thinkingText, opts){
   if(thinkingText){
     const thinkingKey=(opts&&opts.thinkingKey)||`reason:${String(thinkingText).trim()}`;
     if(!seenReasons||!seenReasons.has(thinkingKey)){
-      const thinking=_thinkingActivityNode(thinkingText, false);
-      if(thinking){
-        list.appendChild(thinking);
+      // Create a standalone .thinking-card as a sibling before the group,
+      // not nested inside it.  Matches the settled layout.
+      const tmp=document.createElement('div');
+      tmp.innerHTML=_thinkingCardHtml(thinkingText, false);
+      const card=tmp.firstElementChild;
+      if(card && group.parentElement){
+        group.parentElement.insertBefore(card, group);
         wroteProse=true;
         if(seenReasons) seenReasons.add(thinkingKey);
       }
@@ -10691,14 +10695,14 @@ function appendThinking(text='', options){
     });
     const list=_toolWorklogListEl(group);
     if(list){
-      let row=list.querySelector(`.agent-activity-thinking[data-live-thinking="1"][data-live-thinking-key="${CSS.escape(thinkingKey)}"]`);
+      let row=list.querySelector('.agent-activity-thinking[data-live-thinking="1"][data-live-thinking-key="'+CSS.escape(thinkingKey)+'"]');
       if(!row){
         row=_thinkingActivityNode(clean, false);
         row.setAttribute('data-live-thinking','1');
         row.setAttribute('data-live-thinking-key',thinkingKey);
         if(segmentSeq) row.setAttribute('data-live-segment-seq',segmentSeq);
         if(burstId) row.setAttribute('data-activity-burst-id',burstId);
-        list.querySelectorAll('.agent-activity-thinking[data-thinking-active="1"]').forEach(el=>{
+        list.querySelectorAll('.agent-activity-thinking[data-thinking-active="1"]').forEach(function(el){
           if(el!==row){
             el.removeAttribute('data-thinking-active');
             el.removeAttribute('data-live-thinking');
