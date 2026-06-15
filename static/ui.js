@@ -10660,7 +10660,11 @@ function appendThinking(text='', options){
       row.id='thinkingRow';
       row.className='thinking-card-row';
       const inner=$('msgInner');
-      if(inner) inner.appendChild(row);
+      if(inner){
+        const turn=$('liveAssistantTurn');
+        if(turn) inner.insertBefore(row, turn);
+        else inner.appendChild(row);
+      }
     }
     row.setAttribute('data-thinking-active','1');
     _renderThinkingInto(row,text);
