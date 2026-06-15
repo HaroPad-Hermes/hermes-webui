@@ -9838,8 +9838,7 @@ function ensureLiveWorklogShell(){
   $('emptyState').style.display='none';
   if(!isSimplifiedToolCalling()){
     appendThinking();
-    const turn=$('liveAssistantTurn');
-    return turn?_assistantTurnBlocks(turn):null;
+    return $('thinkingRow');
   }
   let turn=$('liveAssistantTurn');
   if(!turn){
@@ -10592,21 +10591,25 @@ function finalizeThinkingCard(){
   const _guardTurn = $('liveAssistantTurn');
   if(_guardTurn && S.session && _guardTurn.dataset.sessionId !== S.session.session_id) return;
   if(!isSimplifiedToolCalling()){
-    const turn=$('liveAssistantTurn');
-    if(!turn) return;
-    const blocks=_assistantTurnBlocks(turn);
-    if(!blocks) return;
-    const cards=blocks.querySelectorAll('.thinking-card[data-live-thinking-key]');
-    if(!cards.length) return;
-    // If the user was watching (scroll pinned = at bottom), scroll each
-    // thinking card body to the top so the completed response is visible.
-    if(_scrollPinned){
-      cards.forEach(card=>{
-        const body=card.querySelector('.thinking-card-body');
-        if(body) body.scrollTop=0;
-      });
+    const row=$('thinkingRow');
+    if(!row) return;
+    // If the row is still just a spinner (no thinking content rendered),
+    // remove it entirely — it's the initial waiting dots.
+    const hasContent=!!row.querySelector('.thinking-card');
+    if(!hasContent && row.getAttribute('data-thinking-active')==='1'){
+      row.remove();
+      return;
     }
-    cards.forEach(card=>card.removeAttribute('data-live-thinking-key'));
+    // If the user was watching (scroll pinned = at bottom), scroll the thinking
+    // card back to the top so the completed response is visible underneath without
+    // the thinking content blocking it. If they scrolled up to read history,
+    // leave their scroll position intact.
+    if(_scrollPinned){
+      const body=row&&row.querySelector('.thinking-card-body');
+      if(body) body.scrollTop=0;
+    }
+    row.removeAttribute('id');
+    row.removeAttribute('data-thinking-active');
     return;
   }
   const turn=$('liveAssistantTurn');
@@ -10631,44 +10634,16 @@ function appendThinking(text='', options){
   const empty=$('emptyState');
   if(empty) empty.style.display='none';
   if(!isSimplifiedToolCalling()){
-    // Insert thinking cards inside the assistant turn's blocks so each
-    // thinking burst sits above its corresponding assistant text, matching
-    // the settled layout.  segmentSeq / burstId distinguish bursts.
-    let turn=$('liveAssistantTurn');
-    if(!turn){
-      turn=_createAssistantTurn();
-      turn.id='liveAssistantTurn';
-      if(S.session) turn.dataset.sessionId=S.session.session_id;
+    let row=$('thinkingRow');
+    if(!row){
+      row=document.createElement('div');
+      row.id='thinkingRow';
+      row.className='thinking-card-row';
       const inner=$('msgInner');
-      if(inner) inner.appendChild(turn);
+      if(inner) inner.appendChild(row);
     }
-    const blocks=_assistantTurnBlocks(turn);
-    if(!blocks) return;
-    const segmentSeq=String(options.segmentSeq||'');
-    const burstId=String(options.burstId||'');
-    const thinkingKey=segmentSeq?`segment:${segmentSeq}`:burstId?`burst:${burstId}`:'turn';
-    let card=blocks.querySelector(`.thinking-card[data-live-thinking-key="${CSS.escape(thinkingKey)}"]`);
-    if(!card){
-      // Create a new .thinking-card for this burst and insert it before
-      // the last live assistant segment (or at the end of blocks).
-      const html=_thinkingMarkup(text);
-      const tmp=document.createElement('div');
-      tmp.innerHTML=html;
-      card=tmp.firstElementChild;
-      if(!card) return;
-      card.setAttribute('data-live-thinking-key',thinkingKey);
-      if(segmentSeq) card.setAttribute('data-live-segment-seq',segmentSeq);
-      if(burstId) card.setAttribute('data-activity-burst-id',burstId);
-      const liveSegs=blocks.querySelectorAll('[data-live-assistant="1"]');
-      if(liveSegs.length>0){
-        blocks.insertBefore(card, liveSegs[liveSegs.length-1]);
-      } else {
-        blocks.appendChild(card);
-      }
-    } else {
-      // Update existing card content.
-      _renderThinkingInto(card, text);
-    }
+    row.setAttribute('data-thinking-active','1');
+    _renderThinkingInto(row,text);
     if(typeof scrollIfPinned==='function') scrollIfPinned();
     return;
   }
@@ -10723,9 +10698,10 @@ function appendThinking(text='', options){
 function updateThinking(text='', options){appendThinking(text, options);}
 function removeThinking(){
   if(!isSimplifiedToolCalling()){
+    const el=$('thinkingRow');
+    if(el) el.remove();
     const turn=$('liveAssistantTurn');
     const blocks=_assistantTurnBlocks(turn);
-    if(blocks) blocks.querySelectorAll('.thinking-card[data-live-thinking-key]').forEach(el=>el.remove());
     if(turn&&blocks&&!blocks.children.length) turn.remove();
     return;
   }
