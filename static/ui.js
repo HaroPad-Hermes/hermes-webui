@@ -10641,15 +10641,13 @@ function finalizeThinkingCard(){
     return;
   }
   const turn=$('liveAssistantTurn');
-  const group=turn&&turn.querySelector('.live-worklog[data-live-tool-call-group="1"],.tool-worklog-group[data-live-tool-call-group="1"],.tool-call-group[data-live-tool-call-group="1"]');
-  if(group){
-    const activeReason=turn.querySelector('.wl-reason[data-worklog-reason-active="1"]');
-    if(activeReason) activeReason.removeAttribute('data-worklog-reason-active');
-    turn.querySelectorAll('.agent-activity-thinking[data-thinking-active="1"]').forEach(active=>{
-      active.removeAttribute('data-thinking-active');
-      active.removeAttribute('data-live-thinking');
-    });
-    _syncToolCallGroupSummary(group);
+  if(turn){
+    const blocks=_assistantTurnBlocks(turn);
+    if(blocks){
+      blocks.querySelectorAll('.thinking-card[data-thinking-active="1"]').forEach(function(card){
+        card.removeAttribute('data-thinking-active');
+      });
+    }
   }
 }
 function appendThinking(text='', options){
@@ -10697,29 +10695,30 @@ function appendThinking(text='', options){
     const group=ensureLiveWorklogContainer(blocks,{
       activityKey:options.activityKey||(S.activeStreamId?'live:'+S.activeStreamId:null),
     });
-    const list=_toolWorklogListEl(group);
-    if(list){
-      let row=list.querySelector('.agent-activity-thinking[data-live-thinking="1"][data-live-thinking-key="'+CSS.escape(thinkingKey)+'"]');
-      if(!row){
-        row=_thinkingActivityNode(clean, false);
-        row.setAttribute('data-live-thinking','1');
-        row.setAttribute('data-live-thinking-key',thinkingKey);
-        if(segmentSeq) row.setAttribute('data-live-segment-seq',segmentSeq);
-        if(burstId) row.setAttribute('data-activity-burst-id',burstId);
-        list.querySelectorAll('.agent-activity-thinking[data-thinking-active="1"]').forEach(function(el){
-          if(el!==row){
-            el.removeAttribute('data-thinking-active');
-            el.removeAttribute('data-live-thinking');
-          }
-        });
-        row.setAttribute('data-thinking-active','1');
-        list.appendChild(row);
-      }else{
-        _renderThinkingInto(row, clean);
-      }
-      row.setAttribute('data-thinking-active','1');
-      _syncToolCallGroupSummary(group);
+    if(!group) return;
+    // Look for existing .thinking-card sibling before the group, or create one.
+    // Cards are siblings (not nested inside the worklog) so they render with
+    // full card styling, matching the settled layout.
+    let card=blocks.querySelector('.thinking-card[data-live-thinking-key="'+CSS.escape(thinkingKey)+'"]');
+    if(!card){
+      var tmp=document.createElement('div');
+      tmp.innerHTML=_thinkingCardHtml(clean, false);
+      card=tmp.firstElementChild;
+      if(!card) return;
+      card.setAttribute('data-live-thinking-key',thinkingKey);
+      if(segmentSeq) card.setAttribute('data-live-segment-seq',segmentSeq);
+      if(burstId) card.setAttribute('data-activity-burst-id',burstId);
+      blocks.querySelectorAll('.thinking-card[data-thinking-active="1"]').forEach(function(el){
+        if(el!==card) el.removeAttribute('data-thinking-active');
+      });
+      card.setAttribute('data-thinking-active','1');
+      group.parentElement.insertBefore(card, group);
+    } else {
+      var pre=card.querySelector('.thinking-card-body pre');
+      if(pre) pre.textContent=clean;
     }
+    card.setAttribute('data-thinking-active','1');
+    _syncToolCallGroupSummary(group);
   }
   if(typeof scrollIfPinned==='function') scrollIfPinned();
 }
@@ -10735,10 +10734,10 @@ function removeThinking(){
   }
   const turn=$('liveAssistantTurn');
   const blocks=_assistantTurnBlocks(turn);
-  if(blocks) blocks.querySelectorAll('.agent-activity-thinking').forEach(el=>el.remove());
+  if(blocks) blocks.querySelectorAll('.thinking-card[data-live-thinking-key]').forEach(function(el){el.remove();});
   if(blocks) blocks.querySelectorAll('.tool-call-group[data-agent-activity-group="1"]').forEach(group=>{
     _syncToolCallGroupSummary(group);
-    if(!group.querySelector('.tool-card-row,.agent-activity-thinking')){
+    if(!group.querySelector('.tool-card-row,.thinking-card')){
       if(typeof _clearActivityElapsedTimer==='function') _clearActivityElapsedTimer();
       group.remove();
     }
