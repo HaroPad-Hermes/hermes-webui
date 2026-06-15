@@ -8908,6 +8908,10 @@ function renderMessages(options){
         seenTools:state.seenTools,
       });
       _syncToolCallGroupSummary(state.group);
+      // Remove empty groups that only had thinking (no tool cards).
+      if(!state.group.querySelector('.tool-card-row')){
+        state.group.remove();
+      }
       continue;
     }
     activityByTurn.forEach(state=>{
