@@ -2850,6 +2850,32 @@ body.resizing .sidebar{transition:none!important;}
 .assistant-segment:has(.thinking-card) + .tool-worklog-group .wl-step-tools .tool-card-row + .tool-card-row {
   border-top: 1px solid var(--border-subtle);
 }
+/* Same visual attachment when thinking card is a standalone sibling before the worklog */
+.thinking-card + .tool-worklog-group {
+  margin-top: 0;
+  padding-top: 0;
+  border: 1px solid var(--accent-bg-strong);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--accent-bg);
+}
+.thinking-card + .tool-worklog-group .tool-call-group-summary {
+  padding-left: 24px;
+}
+.thinking-card + .tool-worklog-group .tool-worklog-list > * + * {
+  border-top: 1px solid var(--border-subtle);
+}
+.thinking-card + .tool-worklog-group .wl-step-tools .tool-card-row {
+  padding: 2px 8px;
+  margin: 0;
+  border: 0;
+}
+.thinking-card + .tool-worklog-group .wl-step-tools .tool-card-row + .tool-card-row {
+  border-top: 1px solid var(--border-subtle);
+}
+.thinking-card:has(+ .tool-worklog-group) {
+  border-radius: 8px 8px 0 0;
+}
 .live-worklog{
   margin:4px 0 14px;
   max-width:var(--msg-max);

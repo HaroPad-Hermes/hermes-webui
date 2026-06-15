@@ -8903,6 +8903,15 @@ function renderMessages(options){
         seenReasons:state.seenReasons,
         seenTools:state.seenTools,
       });
+      // If the anchor message has a reasoning payload, extract the thinking
+      // card from inside the segment and move it as a standalone sibling
+      // before the activity group, so thinking appears above tool calls.
+      if(!thinkingText){
+        const anchorCard=anchorRow.querySelector('.thinking-card');
+        if(anchorCard && group.parentElement){
+          group.parentElement.insertBefore(anchorCard, group);
+        }
+      }
       _syncToolCallGroupSummary(state.group);
       continue;
     }
