@@ -1915,20 +1915,10 @@ async function _ensureMessagesLoaded(sid) {
   clearLiveToolCards();
   // #3018: preserve client-side ephemeral turn fields (_turnUsage, _turnDuration,
   // _turnTps, _gatewayRouting, _statusCard) across the loadSession replace.
-  // #4015: Restore ephemeral fields by timestamp-free content key.
-  // The original _carryForwardEphemeralTurnFields matches by identity key
-  // (role|timestamp|content) — but frontend _ts ≠ server timestamp, so keys
-  // never match across a session reload. This uses (role|content) instead.
-  // Checks in-memory Map first, then falls back to sessionStorage (survives
-  // page reload where the in-memory Map is empty).
-  let _eph = _pendingCarryForwardSnapshots.get(sid);
-  if (!_eph || !_eph.size) {
-    try {
-      const _ssKey = 'hermes-eph-' + sid;
-      const _raw = sessionStorage.getItem(_ssKey);
-      if (_raw) _eph = new Map(JSON.parse(_raw));
-    } catch (_) { /* corrupted or missing — non-fatal */ }
-  }
+  // #4015: Restore ephemeral fields. Two sources:
+  //   1. In-memory Map (content-key matching, for session switches)
+  //   2. sessionStorage simple key (for page reload — attaches to last assistant)
+  const _eph = _pendingCarryForwardSnapshots.get(sid);
   if (_eph && _eph.size) {
     for (const _m of msgs) {
       const _key = _ephContentKey(_m);
@@ -1941,11 +1931,26 @@ async function _ensureMessagesLoaded(sid) {
       if (_f._gatewayRouting != null && _m._gatewayRouting == null) _m._gatewayRouting = _f._gatewayRouting;
       if (_f._statusCard != null && _m._statusCard == null) _m._statusCard = _f._statusCard;
     }
-  } else if (typeof window._carryForwardEphemeralTurnFields === 'function') {
-    // Fallback: identity-key matching for force-reload / streaming paths
-    // where no content-key snapshot exists (in-memory or sessionStorage).
-    const _prev = (S.messages || []);
-    msgs = window._carryForwardEphemeralTurnFields(_prev, msgs);
+  } else {
+    // Try sessionStorage for page-reload survival
+    let _restored = false;
+    try {
+      const _raw = sessionStorage.getItem('hermes-usage-' + sid);
+      if (_raw) {
+        const _usage = JSON.parse(_raw);
+        for (let _i = msgs.length - 1; _i >= 0; _i--) {
+          if (msgs[_i].role === 'assistant' && msgs[_i]._turnUsage == null) {
+            msgs[_i]._turnUsage = _usage;
+            _restored = true;
+            break;
+          }
+        }
+      }
+    } catch (_) { /* corrupted — non-fatal */ }
+    if (!_restored && typeof window._carryForwardEphemeralTurnFields === 'function') {
+      const _prev = (S.messages || []);
+      msgs = window._carryForwardEphemeralTurnFields(_prev, msgs);
+    }
   }
   _pendingCarryForwardSnapshots.delete(sid);
   if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
