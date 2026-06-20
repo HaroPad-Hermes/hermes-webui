@@ -3278,7 +3278,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
               // just the _turnUsage object from the last assistant message.
               try {
                 if (activeSid && lastAsst && lastAsst._turnUsage) {
-                  sessionStorage.setItem('hermes-usage-' + activeSid, JSON.stringify(lastAsst._turnUsage));
+                  localStorage.setItem('hermes-usage-' + activeSid, JSON.stringify(lastAsst._turnUsage));
                 }
               } catch (_) { /* quota exceeded or private mode — non-fatal */ }
             }

@@ -913,11 +913,11 @@ async function loadSession(sid){
         if (Object.keys(f).length) _eph.set(_key, f);
       }
       _pendingCarryForwardSnapshots.set(currentSid, _eph);
-      // #4015: Also persist to sessionStorage so ephemeral fields survive
+      // #4015: Also persist to localStorage so ephemeral fields survive
       // a full page reload (the in-memory Map is lost on reload).
       try {
         const _ssKey = 'hermes-eph-' + currentSid;
-        sessionStorage.setItem(_ssKey, JSON.stringify([..._eph]));
+        localStorage.setItem(_ssKey, JSON.stringify([..._eph]));
       } catch (_) { /* quota exceeded or private mode — non-fatal */ }
     }
     // #3239: also capture a reload-width hint BEFORE clearing so the
@@ -1935,7 +1935,7 @@ async function _ensureMessagesLoaded(sid) {
     // Try sessionStorage for page-reload survival
     let _restored = false;
     try {
-      const _raw = sessionStorage.getItem('hermes-usage-' + sid);
+      const _raw = localStorage.getItem('hermes-usage-' + sid);
       if (_raw) {
         const _usage = JSON.parse(_raw);
         for (let _i = msgs.length - 1; _i >= 0; _i--) {
