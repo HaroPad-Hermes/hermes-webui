@@ -7800,6 +7800,9 @@ function _cliToolResultText(raw){
           return typeof v==='string' ? v : JSON.stringify(v,null,2);
         }
       }
+      // No recognized key found — pretty-print the whole JSON so
+      // escaped newlines render as actual line breaks (not literal \n).
+      return JSON.stringify(rd,null,2);
     }
   }catch(e){}
   return s;
