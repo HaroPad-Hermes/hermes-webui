@@ -23,10 +23,23 @@ let _loadingSessionId = null;
 // _ensureMessagesLoaded() when calling _carryForwardEphemeralTurnFields so
 // ephemeral fields (_turnUsage, _turnDuration, _turnTps, _gatewayRouting,
 // _statusCard) survive the wholesale replace.
-// Per-session Map (sid → ephemeral fields array, indexed by message position)
-// so ephemeral fields persist across session switches without relying on
-// identity-key matching (#4015).
+// Per-session Map (sid → Map of contentKey → ephemeral fields) so
+// ephemeral fields persist across session switches using timestamp-free
+// content keys (#4015).
 const _pendingCarryForwardSnapshots = new Map();
+
+// Timestamp-free content key for ephemeral-field matching. Mirrors
+// _messageIdentityKey in messages.js but omits the timestamp so
+// frontend _ts values and server timestamp values don't cause mismatches.
+function _ephContentKey(m) {
+  if (!m || !m.role) return '';
+  let body = '';
+  if (typeof m.content === 'string') body = m.content;
+  else if (Array.isArray(m.content)) {
+    try { body = m.content.map(p => (p && typeof p === 'object') ? (p.text || p.input_text || '') : String(p || '')).join(''); } catch (_) { body = ''; }
+  }
+  return m.role + '|' + body.slice(0, 160);
+}
 
 // ── Composer draft persistence ────────────────────────────────────────────────
 
@@ -882,20 +895,22 @@ async function loadSession(sid){
     if (_loadingSessionId !== sid) return;
   }
   if (currentSid !== sid || forceReload) {
-    // #3306 / #4015: Save ephemeral turn fields by message index before
-    // clearing, so they can be restored by position when this session is
-    // loaded again (identity-key matching via _carryForwardEphemeralTurnFields
-    // can fail when frontend _ts differs from server timestamp).
+    // #3306 / #4015: Save ephemeral turn fields keyed by (role, content)
+    // so they can be restored when this session is loaded again. Uses a
+    // timestamp-free content key because frontend _ts ≠ server timestamp,
+    // which is why the original identity-key matching fails.
     if (currentSid && S.messages && S.messages.length) {
-      const _eph = [];
+      const _eph = new Map();
       for (const m of (S.messages || [])) {
+        const _key = _ephContentKey(m);
+        if (!_key) continue;
         const f = {};
         if (m._turnUsage) f._turnUsage = m._turnUsage;
         if (m._turnDuration != null) f._turnDuration = m._turnDuration;
         if (m._turnTps != null) f._turnTps = m._turnTps;
         if (m._gatewayRouting != null) f._gatewayRouting = m._gatewayRouting;
         if (m._statusCard != null) f._statusCard = m._statusCard;
-        _eph.push(f);
+        if (Object.keys(f).length) _eph.set(_key, f);
       }
       _pendingCarryForwardSnapshots.set(currentSid, _eph);
     }
@@ -1894,21 +1909,26 @@ async function _ensureMessagesLoaded(sid) {
   clearLiveToolCards();
   // #3018: preserve client-side ephemeral turn fields (_turnUsage, _turnDuration,
   // _turnTps, _gatewayRouting, _statusCard) across the loadSession replace.
-  // #4015: Restore by message position from the per-session ephemeral store,
-  // avoiding identity-key mismatches when frontend _ts ≠ server timestamp.
+  // #4015: Restore ephemeral fields by timestamp-free content key.
+  // The original _carryForwardEphemeralTurnFields matches by identity key
+  // (role|timestamp|content) — but frontend _ts ≠ server timestamp, so keys
+  // never match across a session reload. This uses (role|content) instead.
   const _eph = _pendingCarryForwardSnapshots.get(sid);
-  if (_eph && _eph.length) {
-    for (let _i = 0; _i < Math.min(_eph.length, msgs.length); _i++) {
-      const _f = _eph[_i];
-      if (_f._turnUsage && msgs[_i]._turnUsage == null) msgs[_i]._turnUsage = _f._turnUsage;
-      if (_f._turnDuration != null && msgs[_i]._turnDuration == null) msgs[_i]._turnDuration = _f._turnDuration;
-      if (_f._turnTps != null && msgs[_i]._turnTps == null) msgs[_i]._turnTps = _f._turnTps;
-      if (_f._gatewayRouting != null && msgs[_i]._gatewayRouting == null) msgs[_i]._gatewayRouting = _f._gatewayRouting;
-      if (_f._statusCard != null && msgs[_i]._statusCard == null) msgs[_i]._statusCard = _f._statusCard;
+  if (_eph && _eph.size) {
+    for (const _m of msgs) {
+      const _key = _ephContentKey(_m);
+      if (!_key) continue;
+      const _f = _eph.get(_key);
+      if (!_f) continue;
+      if (_f._turnUsage && _m._turnUsage == null) _m._turnUsage = _f._turnUsage;
+      if (_f._turnDuration != null && _m._turnDuration == null) _m._turnDuration = _f._turnDuration;
+      if (_f._turnTps != null && _m._turnTps == null) _m._turnTps = _f._turnTps;
+      if (_f._gatewayRouting != null && _m._gatewayRouting == null) _m._gatewayRouting = _f._gatewayRouting;
+      if (_f._statusCard != null && _m._statusCard == null) _m._statusCard = _f._statusCard;
     }
   } else if (typeof window._carryForwardEphemeralTurnFields === 'function') {
-    // Fallback: identity-key matching (used when no positional snapshot exists,
-    // e.g. force-reload of active session that wasn't saved by loadSession).
+    // Fallback: identity-key matching for force-reload / streaming paths
+    // where a positional snapshot wasn't saved by loadSession.
     const _prev = (S.messages || []);
     msgs = window._carryForwardEphemeralTurnFields(_prev, msgs);
   }
