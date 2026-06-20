@@ -22,9 +22,10 @@ let _loadingSessionId = null;
 // clears them on a force-reload of the active session. Consumed by
 // _ensureMessagesLoaded() when calling _carryForwardEphemeralTurnFields so
 // ephemeral fields (_turnUsage, _turnDuration, _turnTps, _gatewayRouting,
-// _statusCard) survive the wholesale replace. null when there is nothing
-// to carry forward (initial load, switch-to-different-session, etc.).
-let _pendingCarryForwardSnapshot = null;
+// _statusCard) survive the wholesale replace.
+// Per-session Map (sid → messages[]) so ephemeral fields persist across
+// session switches, not just same-session force-reloads (#4015).
+const _pendingCarryForwardSnapshots = new Map();
 
 // ── Composer draft persistence ────────────────────────────────────────────────
 
@@ -880,18 +881,13 @@ async function loadSession(sid){
     if (_loadingSessionId !== sid) return;
   }
   if (currentSid !== sid || forceReload) {
-    // #3306: When force-reloading the currently-active session (e.g. external
-    // poll triggering a refresh), snapshot the existing messages BEFORE we
-    // clear them. _ensureMessagesLoaded() runs the ephemeral-field
-    // carry-forward (_turnUsage, _turnDuration, _turnTps, _gatewayRouting,
-    // _statusCard) against S.messages, but by the time the API fetch returns
-    // S.messages has already been reset to [] here and the carry-forward is a
-    // no-op. The visible symptom is the token-usage badge vanishing ~10s
-    // after each assistant turn completes. Stash the snapshot so the
-    // carry-forward call can consume it.
-    _pendingCarryForwardSnapshot = (currentSid === sid && forceReload)
-      ? (S.messages || []).slice()
-      : null;
+    // #3306 / #4015: Save current messages before clearing so ephemeral
+    // fields (_turnUsage, _turnDuration, etc.) can be carried forward
+    // when this session is loaded again — whether via force-reload or
+    // a later switch back after navigating away.
+    if (currentSid && S.messages && S.messages.length) {
+      _pendingCarryForwardSnapshots.set(currentSid, (S.messages || []).slice());
+    }
     // #3239: also capture a reload-width hint BEFORE clearing so the
     // authoritative reload preserves the already-loaded transcript width
     // instead of collapsing a long session back to the default tail window.
@@ -1888,14 +1884,15 @@ async function _ensureMessagesLoaded(sid) {
   // #3018: preserve client-side ephemeral turn fields (_turnUsage, _turnDuration,
   // _turnTps, _gatewayRouting, _statusCard) across the loadSession replace.
   if(typeof window._carryForwardEphemeralTurnFields==='function'){
-    // #3306: Prefer the pre-clear snapshot stashed by loadSession() on a
-    // force-reload of the active session; S.messages was reset to [] there
-    // and would otherwise yield an empty carry-forward.
-    const _prev = (Array.isArray(_pendingCarryForwardSnapshot) && _pendingCarryForwardSnapshot.length)
-      ? _pendingCarryForwardSnapshot
+    // #3306 / #4015: Prefer the pre-clear snapshot stashed by loadSession()
+    // for this session id; S.messages was reset to [] there and would
+    // otherwise yield an empty carry-forward.
+    const _snapshot = _pendingCarryForwardSnapshots.get(sid);
+    const _prev = (Array.isArray(_snapshot) && _snapshot.length)
+      ? _snapshot
       : (S.messages || []);
     msgs=window._carryForwardEphemeralTurnFields(_prev, msgs);
-    _pendingCarryForwardSnapshot = null;
+    _pendingCarryForwardSnapshots.delete(sid);
   }
   if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
   S.messages = msgs;
