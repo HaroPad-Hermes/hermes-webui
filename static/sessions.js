@@ -2421,8 +2421,21 @@ async function _loadOlderMessages() {
     // Carry forward ephemeral turn fields (_turnUsage/_turnDuration/_turnTps/
     // _gatewayRouting/_statusCard) before the wholesale replace so the badge
     // does not briefly appear and disappear during older-message expansion.
-    if (typeof window._carryForwardEphemeralTurnFields === 'function') {
-      nextMessages = window._carryForwardEphemeralTurnFields(S.messages || [], nextMessages);
+    // #4015: Use content-key matching (no timestamp) — the original identity-key
+    // approach fails because frontend _ts ≠ server timestamp.
+    for (const _nm of nextMessages) {
+      const _key = _ephContentKey(_nm);
+      if (!_key) continue;
+      for (const _om of (S.messages || [])) {
+        if (_ephContentKey(_om) === _key) {
+          if (_om._turnUsage && _nm._turnUsage == null) _nm._turnUsage = _om._turnUsage;
+          if (_om._turnDuration != null && _nm._turnDuration == null) _nm._turnDuration = _om._turnDuration;
+          if (_om._turnTps != null && _nm._turnTps == null) _nm._turnTps = _om._turnTps;
+          if (_om._gatewayRouting != null && _nm._gatewayRouting == null) _nm._gatewayRouting = _om._gatewayRouting;
+          if (_om._statusCard != null && _nm._statusCard == null) _nm._statusCard = _om._statusCard;
+          break;
+        }
+      }
     }
     S.messages = nextMessages;
     _syncToolCallsForLoadedMessages(nextMessages, responseSession.tool_calls);
