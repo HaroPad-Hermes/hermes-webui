@@ -3193,25 +3193,8 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           const _prevCost=(S.session&&S.session.estimated_cost)||0;
           const _prevCacheRead=(S.session&&S.session.cache_read_tokens)||0;
           const _prevCacheWrite=(S.session&&S.session.cache_write_tokens)||0;
-          // #4015: Snapshot old messages BEFORE replace so _turnUsage can
-          // be carried forward (identity-key matching below fails because
-          // frontend _ts ≠ server timestamp).
-          const _preMsgs = (S.messages || []).slice();
           S.session=d.session;S.messages=_carryForwardEphemeralTurnFields(S.messages||[], d.session.messages||[]);if(typeof _messagesTruncated!=='undefined')_messagesTruncated=!!d.session._messages_truncated;
           S.messages=_filterRecoveryControlMessages(S.messages || []);
-          // #4015: Content-key carry-forward from the snapshot to preserve
-          // _turnUsage on older messages across the done-event replace.
-          for (const _nm of S.messages) {
-            const _nk = _nm && _nm.role ? _nm.role + '|' + (typeof _nm.content === 'string' ? _nm.content : '').slice(0, 160) : '';
-            if (!_nk || _nk === '|' || _nm._turnUsage != null) continue;
-            for (const _om of _preMsgs) {
-              const _ok = _om && _om.role ? _om.role + '|' + (typeof _om.content === 'string' ? _om.content : '').slice(0, 160) : '';
-              if (_ok === _nk && _om._turnUsage) {
-                _nm._turnUsage = _om._turnUsage;
-                break;
-              }
-            }
-          }
           if(typeof _hydrateTodosFromSession==='function') _hydrateTodosFromSession(S.session);
           if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
           if(S.session&&S.session.session_id){
