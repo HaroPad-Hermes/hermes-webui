@@ -7486,12 +7486,16 @@ def _run_agent_streaming(
                     )
             except Exception:
                 logger.debug("Failed to sync session to insights")
+            # Build the usage payload.  When the agent was rebuilt from a cache
+            # miss its session_prompt_tokens/session_completion_tokens start at
+            # zero; fall back to the persisted session totals so the frontend
+            # can still compute the per-turn delta correctly (#4015).
             usage = {
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens,
-                'estimated_cost': estimated_cost,
-                'cache_read_tokens': cache_read_tokens,
-                'cache_write_tokens': cache_write_tokens,
+                'input_tokens': input_tokens or (getattr(s, 'input_tokens', 0) or 0),
+                'output_tokens': output_tokens or (getattr(s, 'output_tokens', 0) or 0),
+                'estimated_cost': estimated_cost if estimated_cost is not None else getattr(s, 'estimated_cost', None),
+                'cache_read_tokens': cache_read_tokens or (getattr(s, 'cache_read_tokens', 0) or 0),
+                'cache_write_tokens': cache_write_tokens or (getattr(s, 'cache_write_tokens', 0) or 0),
                 'cache_hit_percent': cache_hit_percent,
                 'turn_cache_hit_percent': turn_cache_hit_percent,
                 'duration_seconds': round(_turn_duration_seconds, 3),
