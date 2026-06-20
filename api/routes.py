@@ -3226,35 +3226,59 @@ def _tool_calls_for_message_window(tool_calls, start_idx: int, message_count: in
             rebased["assistant_msg_idx"] = assistant_idx - start_idx
             filtered.append(rebased)
     return filtered
-
-
 def _extract_tool_calls_from_messages(messages: list) -> list:
     """Extract session-level tool_calls from per-message state.db rows.
 
-    State.db messages carry tool_calls as a per-message column (JSON array).
-    Reconstruct the session-level tool_calls list, preserving the original
-    assistant_msg_idx coordinate space so windowed pagination still works.
+    State.db messages carry tool_calls in provider-native format
+    (function.name, function.arguments). Flatten to the frontend
+    format (name, args, snippet, tid) and extract content previews
+    from matching tool-result messages.
     """
     if not isinstance(messages, list):
         return []
-    tool_calls = []
+    pending = {}
     for idx, msg in enumerate(messages):
-        if not isinstance(msg, dict):
+        if not isinstance(msg, dict) or msg.get('role') != 'assistant':
             continue
-        tc = msg.get("tool_calls")
-        if tc is None:
+        tcs = msg.get('tool_calls')
+        if tcs is None:
             continue
-        if isinstance(tc, str):
+        if isinstance(tcs, str):
             try:
-                tc = json.loads(tc)
+                tcs = json.loads(tcs)
             except (json.JSONDecodeError, TypeError):
                 continue
-        if not isinstance(tc, list):
+        if not isinstance(tcs, list):
             continue
-        for call in tc:
-            if isinstance(call, dict):
-                call.setdefault("assistant_msg_idx", idx)
-                tool_calls.append(call)
+        for call in tcs:
+            if not isinstance(call, dict):
+                continue
+            tid = call.get('id') or call.get('call_id', '')
+            fn = call.get('function', {})
+            name = fn.get('name', '')
+            try:
+                args = json.loads(fn.get('arguments', '{}') or '{}')
+            except Exception:
+                args = {}
+            if tid and name:
+                pending[tid] = {'name': name, 'args': args, 'idx': idx}
+    from api.streaming import _tool_result_snippet
+    tool_calls = []
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get('role') != 'tool':
+            continue
+        tid = msg.get('tool_call_id') or msg.get('tool_use_id', '')
+        if not tid or tid not in pending:
+            continue
+        info = pending[tid]
+        raw = msg.get('content', '')
+        tool_calls.append({
+            'name': info['name'],
+            'tid': tid,
+            'args': {k: str(v)[:120] for k, v in info['args'].items()},
+            'snippet': _tool_result_snippet(raw),
+            'assistant_msg_idx': info['idx'],
+        })
     return tool_calls
 
 

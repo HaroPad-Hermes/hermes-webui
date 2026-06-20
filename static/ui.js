@@ -9546,6 +9546,114 @@ function _toolCardPreviewText(tc, displaySnippet){
   if(tc&&tc.is_error) return 'Failed';
   return 'Completed';
 }
+// Patch an existing live tool card's content in-place without destroying
+// the DOM, so scroll position inside <pre> blocks is preserved.
+function _patchLiveToolCard(existingRow, tc){
+  const card=existingRow.querySelector('.tool-card');
+  if(!card) return;
+  const header=card.querySelector('.tool-card-header');
+  const dot=header?.querySelector('.tool-card-running-dot');
+  const preview=header?.querySelector('.tool-card-preview');
+  const nameEl=header?.querySelector('.tool-card-name');
+  let toggle=header?.querySelector('.tool-card-toggle');
+  let detail=card.querySelector('.tool-card-detail');
+  let resultDiv=detail?.querySelector('.tool-card-result');
+  let pre=resultDiv?.querySelector('pre');
+
+  // Update running dot
+  if(dot){
+    if(tc.done!==false) dot.remove();
+  }else if(tc.done===false && header){
+    header.insertAdjacentHTML('afterbegin', '<span class="tool-card-running-dot"></span>');
+  }
+
+  // Update done state
+  card.classList.toggle('tool-card-running', tc.done===false);
+  existingRow.dataset.toolDone=String(tc&&tc.done!==false);
+  existingRow.dataset.toolError=String(!!(tc&&tc.is_error));
+
+  // Update name if it changed
+  if(nameEl && tc.name){
+    nameEl.textContent=_toolDisplayName(tc);
+  }
+
+  // Update preview text in header
+  if(preview && tc.preview!=null){
+    preview.textContent=String(tc.preview||'').slice(0,200);
+  }
+
+  // Update or create result content — preserves scroll position
+  if(tc.snippet!=null){
+    const s=String(tc.snippet||'');
+    const hasContent=s.length>0;
+    const isDiff=tc.is_diff||_snippetLooksLikeDiff(s);
+
+    // Create missing DOM elements on demand
+    if(hasContent && !detail){
+      detail=document.createElement('div');
+      detail.className='tool-card-detail';
+      card.appendChild(detail);
+    }
+    if(hasContent && detail && !resultDiv){
+      resultDiv=document.createElement('div');
+      resultDiv.className='tool-card-result';
+      detail.appendChild(resultDiv);
+    }
+    if(hasContent && resultDiv && !pre){
+      pre=document.createElement('pre');
+      resultDiv.appendChild(pre);
+    }
+
+    // Now update the pre content
+    if(pre && hasContent){
+      if(isDiff){
+        let code=pre.querySelector('code.diff-block');
+        if(!code){ code=document.createElement('code'); code.className='diff-block'; pre.textContent=''; pre.appendChild(code); }
+        code.innerHTML=_colorDiffLines(s);
+      }else{
+        pre.textContent=s;
+      }
+      // Update 'Show more' toggle
+      let moreBtn=card.querySelector('.tool-card-more');
+      if(s.length>800){
+        if(!moreBtn && resultDiv){
+          const short=s.slice(0,800);
+          const label=tc.is_diff?'Show diff':'Show more';
+          const lessLabel=tc.is_diff?'Hide diff':'Show less';
+          moreBtn=document.createElement('button');
+          moreBtn.className='tool-card-more';
+          moreBtn.dataset.full=s;
+          moreBtn.dataset.short=short;
+          moreBtn.dataset.isDiff=isDiff?'1':'0';
+          moreBtn.dataset.moreLabel=label;
+          moreBtn.dataset.lessLabel=lessLabel;
+          moreBtn.textContent=label;
+          moreBtn.onclick=function(e){ e.stopPropagation(); _toggleToolDiff(this); };
+          resultDiv.appendChild(moreBtn);
+        }else if(moreBtn){
+          moreBtn.dataset.full=s;
+          moreBtn.dataset.short=s.slice(0,800);
+          moreBtn.dataset.isDiff=isDiff?'1':'0';
+        }
+      }
+    }
+  }
+
+  // Ensure toggle visibility matches detail presence
+  const hasArgs=tc.args&&Object.keys(tc.args).length>0;
+  const hasDetail=!!(detail && detail.children.length>0) || hasArgs;
+  if(toggle && !hasDetail) toggle.remove();
+  else if(!toggle && hasDetail && header){
+    header.insertAdjacentHTML('beforeend', `<span class="tool-card-toggle">${li('chevron-right',12)}</span>`);
+  }
+
+  // Update stored data
+  existingRow._tcData=tc;
+  if(_isMemorySave(tc)){existingRow.setAttribute('data-memory-save','1');existingRow.removeAttribute('data-skill-update');}
+  else if(_isSkillUpdate(tc)){existingRow.setAttribute('data-skill-update','1');existingRow.removeAttribute('data-memory-save');}
+  else {existingRow.removeAttribute('data-memory-save');existingRow.removeAttribute('data-skill-update');}
+}
+
 function buildToolCard(tc){
   const row=document.createElement('div');
   row.className='tool-card-row';
@@ -9795,13 +9903,22 @@ function appendLiveToolCard(tc){
   });
   const list=_liveToolStepEl(group);
   if(!list) return;
-  // toolComplete can replace the existing live card with the same tid.
+  // toolComplete / incremental updates: rebuild the card but preserve
+  // scroll position inside <pre> blocks so reading output isn't disrupted.
   if(tid){
     const existing=group.querySelector(`.tool-card-row[data-live-tid="${CSS.escape(tid)}"]`);
     if(existing){
+      // Save scroll position of the current pre element
+      const oldPre=existing.querySelector('.tool-card-result pre');
+      const scrollTop=oldPre?oldPre.scrollTop:0;
       const replacement=buildToolCard(tc);
       replacement.dataset.liveTid=tid;
       existing.replaceWith(replacement);
+      // Restore scroll position on the new pre element
+      if(oldPre){
+        const newPre=replacement.querySelector('.tool-card-result pre');
+        if(newPre) newPre.scrollTop=scrollTop;
+      }
       _syncToolCallGroupSummary(group);
       _moveLiveRunStatusToTurnEnd();
       if(typeof scrollIfPinned==='function') scrollIfPinned();

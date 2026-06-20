@@ -2554,8 +2554,8 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     try{
       const rd = JSON.parse(s);
       if(rd && typeof rd==='object'){
-        // Check for standard keys (output / result / error / content).
-        for(const key of ['output','result','error','content','diff','patch']){
+        // Check for standard keys (output / result / error / content / analysis / citations).
+        for(const key of ['output','result','error','content','analysis','citations','diff','patch']){
           if(Object.prototype.hasOwnProperty.call(rd,key)){
             const v=rd[key];
             if(v==null) return '';

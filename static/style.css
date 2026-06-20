@@ -3178,13 +3178,13 @@ body.resizing .sidebar{transition:none!important;}
 .tool-card-toggle,.tl-caret{margin-left:auto;font-size:10px;color:var(--muted);opacity:.4;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transform-origin:center;transition:transform .18s ease;will-change:transform;}
 .tool-card.open .tool-card-toggle,.tl.open .tl-caret{transform:rotate(90deg);}
 .tool-card-detail,.tl-detail{display:block;max-height:0;opacity:0;overflow:hidden;border-top:1px solid transparent;padding:0;margin-left:0;transition:max-height .26s ease,opacity .2s ease,padding .22s ease,border-top-color .22s ease;background:var(--code-bg);border-radius:8px;}
-.tool-card.open .tool-card-detail,.tl.open .tl-detail{max-height:320px;opacity:1;padding:0;border-top-color:transparent;overflow:auto;margin-top:4px;}
+.tool-card.open .tool-card-detail,.tl.open .tl-detail{max-height:80vh;min-height:80px;opacity:1;padding:0;border-top-color:transparent;overflow:auto;resize:vertical;margin-top:4px;}
 .tl-detail-inner{padding:9px 12px 11px;}
 .tool-card-args{margin-bottom:6px;}
 .tool-card-args div{font-size:var(--message-code-font-size);line-height:1.6;}
 .tool-arg-key{color:var(--blue);font-family:'SF Mono',ui-monospace,monospace;font-size:var(--message-code-font-size);display:block;margin-bottom:2px;}
 .tool-arg-val{color:var(--muted);font-family:'SF Mono',ui-monospace,monospace;font-size:var(--message-code-font-size);white-space:pre-wrap;word-break:break-word;display:block;overflow-x:auto;}
-.tool-card-result pre{font-size:var(--message-code-font-size);color:var(--muted);font-family:'SF Mono',ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow-y:auto;margin:0;line-height:1.55;}
+.tool-card-result pre{font-size:var(--message-code-font-size);color:var(--muted);font-family:'SF Mono',ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;margin:0;line-height:1.55;}
 
 /* ── Manual compression cards (transient transcript-local feedback) ── */
 .live-compression-cards{

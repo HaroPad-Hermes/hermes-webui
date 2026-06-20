@@ -4273,8 +4273,15 @@ def _tool_result_snippet(raw, limit: int = _TOOL_RESULT_SNIPPET_MAX) -> str:
     try:
         data = raw if isinstance(raw, dict) else json.loads(text)
         if isinstance(data, dict):
-            preview = data.get('output') or data.get('result') or data.get('error') or text
-            text = str(preview)
+            # Try recognized content keys (ordered by priority).
+            preview = (data.get('output') or data.get('result') or data.get('content')
+                       or data.get('analysis') or data.get('citations') or data.get('error'))
+            # Handle array-of-object results (e.g. web_extract: {"results": [{"content": ...}]})
+            if not preview and isinstance(data.get('results'), list) and len(data['results']) > 0:
+                first = data['results'][0]
+                if isinstance(first, dict):
+                    preview = first.get('content') or first.get('output') or first.get('result')
+            text = str(preview) if preview else text
     except Exception:
         pass
     return text[:limit]
