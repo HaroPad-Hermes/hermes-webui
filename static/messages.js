@@ -3273,6 +3273,28 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
                 if(S.session&&Array.isArray(S.session.gateway_routing_history))S.session.gateway_routing_history.push(d.usage.gateway_routing);
                 else if(S.session)S.session.gateway_routing_history=[d.usage.gateway_routing];
               }
+              // #4015: Persist ephemeral fields to sessionStorage so they
+              // survive a page reload (the in-memory Map only survives
+              // session switches within the same page load).
+              try {
+                const _ssKey = 'hermes-eph-' + (activeSid || '');
+                if (_ssKey) {
+                  let _ssMap;
+                  try { _ssMap = new Map(JSON.parse(sessionStorage.getItem(_ssKey) || '[]')); } catch(_) { _ssMap = new Map(); }
+                  for (const _m of (S.messages || [])) {
+                    const _k = (_m && _m.role) ? _m.role + '|' + (typeof _m.content === 'string' ? _m.content : '').slice(0, 160) : '';
+                    if (!_k || _k === '|') continue;
+                    const _mf = {};
+                    if (_m._turnUsage) _mf._turnUsage = _m._turnUsage;
+                    if (_m._turnDuration != null) _mf._turnDuration = _m._turnDuration;
+                    if (_m._turnTps != null) _mf._turnTps = _m._turnTps;
+                    if (_m._gatewayRouting) _mf._gatewayRouting = _m._gatewayRouting;
+                    if (_m._statusCard) _mf._statusCard = _m._statusCard;
+                    if (Object.keys(_mf).length) _ssMap.set(_k, _mf);
+                  }
+                  sessionStorage.setItem(_ssKey, JSON.stringify([..._ssMap]));
+                }
+              } catch (_) { /* quota exceeded or private mode — non-fatal */ }
             }
           }
           const hasMessageToolMetadata=S.messages.some(m=>{
