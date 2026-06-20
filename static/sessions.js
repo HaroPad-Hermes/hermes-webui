@@ -1945,6 +1945,10 @@ async function _ensureMessagesLoaded(sid) {
             break;
           }
         }
+        // Clear immediately — single-use. The next beforeunload will
+        // re-save fresh _turnUsage. Prevents stale data from surviving
+        // through multiple turns if the done-event delta is zero.
+        localStorage.removeItem('hermes-usage-' + sid);
       }
     } catch (_) { /* corrupted — non-fatal */ }
     if (!_restored && typeof window._carryForwardEphemeralTurnFields === 'function') {
