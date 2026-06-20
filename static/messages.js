@@ -2548,6 +2548,27 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
     };
   }
 
+  // Normalize raw tool-results for the live streaming path (module-loaded).
+  function _liveNormalizeToolResult(snippet){
+    const s = String(snippet||'');
+    try{
+      const rd = JSON.parse(s);
+      if(rd && typeof rd==='object'){
+        // Check for standard keys (output / result / error / content).
+        for(const key of ['output','result','error','content','diff','patch']){
+          if(Object.prototype.hasOwnProperty.call(rd,key)){
+            const v=rd[key];
+            if(v==null) return '';
+            return typeof v==='string' ? v : JSON.stringify(v,null,2);
+          }
+        }
+        // No recognized key — pretty-print so \n become real line breaks.
+        return JSON.stringify(rd,null,2);
+      }
+    }catch(e){}
+    return s;
+  }
+
   function upsertLiveToolCall(d, phase){
     if(!d||d.name==='clarify') return null;
     const name=String(d&&d.name||'').trim();
@@ -2629,7 +2650,7 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
       tc.preview=String(d.preview||tc.preview||'');
     }
     if(d.args!==undefined) tc.args=d.args;
-    if(d.snippet!==undefined) tc.snippet=d.snippet;
+    if(d.snippet!==undefined) tc.snippet= _liveNormalizeToolResult(d.snippet);
     tc._liveToolCallSignature = _toolCallSignature(tc,tc.activityBurstId,tc.activitySegmentSeq);
     tc.activityBurstId = Number.isFinite(Number(tc.activityBurstId))
       ? Number(tc.activityBurstId)
