@@ -3241,6 +3241,9 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
               : {..._doneUsageFallback,...d.usage};
             _syncCtxIndicator(S.lastUsage);
             // #503 — compute per-turn cost delta and attach to last assistant message
+            // #4015: Clear stale _turnUsage (from localStorage restore) before
+            // computing delta, so it doesn't survive if the delta is zero.
+            if (lastAsst && lastAsst._turnUsage) delete lastAsst._turnUsage;
             if(lastAsst){
               const prevIn=_prevIn;
               const prevOut=_prevOut;
