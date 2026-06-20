@@ -5201,4 +5201,19 @@ function startBackgroundPolling(parentSid, taskId, prompt){
   _poll();
 }
 
+// #4015: Save _turnUsage to localStorage on page unload so it survives
+// hard refresh / navigation. Belts-and-suspenders with the done-event save.
+window.addEventListener('beforeunload', function() {
+  try {
+    const _msgs = (typeof S !== 'undefined' && S.messages) ? S.messages : [];
+    for (let _i = _msgs.length - 1; _i >= 0; _i--) {
+      if (_msgs[_i] && _msgs[_i]._turnUsage) {
+        const _sid = (typeof S !== 'undefined' && S.session && S.session.session_id) || '';
+        if (_sid) localStorage.setItem('hermes-usage-' + _sid, JSON.stringify(_msgs[_i]._turnUsage));
+        break;
+      }
+    }
+  } catch (_) {}
+});
+
 // ── Panel navigation (Chat / Tasks / Skills / Memory) ──
