@@ -23,8 +23,9 @@ let _loadingSessionId = null;
 // _ensureMessagesLoaded() when calling _carryForwardEphemeralTurnFields so
 // ephemeral fields (_turnUsage, _turnDuration, _turnTps, _gatewayRouting,
 // _statusCard) survive the wholesale replace.
-// Per-session Map (sid → messages[]) so ephemeral fields persist across
-// session switches, not just same-session force-reloads (#4015).
+// Per-session Map (sid → ephemeral fields array, indexed by message position)
+// so ephemeral fields persist across session switches without relying on
+// identity-key matching (#4015).
 const _pendingCarryForwardSnapshots = new Map();
 
 // ── Composer draft persistence ────────────────────────────────────────────────
@@ -881,12 +882,22 @@ async function loadSession(sid){
     if (_loadingSessionId !== sid) return;
   }
   if (currentSid !== sid || forceReload) {
-    // #3306 / #4015: Save current messages before clearing so ephemeral
-    // fields (_turnUsage, _turnDuration, etc.) can be carried forward
-    // when this session is loaded again — whether via force-reload or
-    // a later switch back after navigating away.
+    // #3306 / #4015: Save ephemeral turn fields by message index before
+    // clearing, so they can be restored by position when this session is
+    // loaded again (identity-key matching via _carryForwardEphemeralTurnFields
+    // can fail when frontend _ts differs from server timestamp).
     if (currentSid && S.messages && S.messages.length) {
-      _pendingCarryForwardSnapshots.set(currentSid, (S.messages || []).slice());
+      const _eph = [];
+      for (const m of (S.messages || [])) {
+        const f = {};
+        if (m._turnUsage) f._turnUsage = m._turnUsage;
+        if (m._turnDuration != null) f._turnDuration = m._turnDuration;
+        if (m._turnTps != null) f._turnTps = m._turnTps;
+        if (m._gatewayRouting != null) f._gatewayRouting = m._gatewayRouting;
+        if (m._statusCard != null) f._statusCard = m._statusCard;
+        _eph.push(f);
+      }
+      _pendingCarryForwardSnapshots.set(currentSid, _eph);
     }
     // #3239: also capture a reload-width hint BEFORE clearing so the
     // authoritative reload preserves the already-loaded transcript width
@@ -1883,17 +1894,25 @@ async function _ensureMessagesLoaded(sid) {
   clearLiveToolCards();
   // #3018: preserve client-side ephemeral turn fields (_turnUsage, _turnDuration,
   // _turnTps, _gatewayRouting, _statusCard) across the loadSession replace.
-  if(typeof window._carryForwardEphemeralTurnFields==='function'){
-    // #3306 / #4015: Prefer the pre-clear snapshot stashed by loadSession()
-    // for this session id; S.messages was reset to [] there and would
-    // otherwise yield an empty carry-forward.
-    const _snapshot = _pendingCarryForwardSnapshots.get(sid);
-    const _prev = (Array.isArray(_snapshot) && _snapshot.length)
-      ? _snapshot
-      : (S.messages || []);
-    msgs=window._carryForwardEphemeralTurnFields(_prev, msgs);
-    _pendingCarryForwardSnapshots.delete(sid);
+  // #4015: Restore by message position from the per-session ephemeral store,
+  // avoiding identity-key mismatches when frontend _ts ≠ server timestamp.
+  const _eph = _pendingCarryForwardSnapshots.get(sid);
+  if (_eph && _eph.length) {
+    for (let _i = 0; _i < Math.min(_eph.length, msgs.length); _i++) {
+      const _f = _eph[_i];
+      if (_f._turnUsage && msgs[_i]._turnUsage == null) msgs[_i]._turnUsage = _f._turnUsage;
+      if (_f._turnDuration != null && msgs[_i]._turnDuration == null) msgs[_i]._turnDuration = _f._turnDuration;
+      if (_f._turnTps != null && msgs[_i]._turnTps == null) msgs[_i]._turnTps = _f._turnTps;
+      if (_f._gatewayRouting != null && msgs[_i]._gatewayRouting == null) msgs[_i]._gatewayRouting = _f._gatewayRouting;
+      if (_f._statusCard != null && msgs[_i]._statusCard == null) msgs[_i]._statusCard = _f._statusCard;
+    }
+  } else if (typeof window._carryForwardEphemeralTurnFields === 'function') {
+    // Fallback: identity-key matching (used when no positional snapshot exists,
+    // e.g. force-reload of active session that wasn't saved by loadSession).
+    const _prev = (S.messages || []);
+    msgs = window._carryForwardEphemeralTurnFields(_prev, msgs);
   }
+  _pendingCarryForwardSnapshots.delete(sid);
   if(typeof clearVisibleMessageRowCache==='function') clearVisibleMessageRowCache();
   S.messages = msgs;
   // Expand render window to cover all loaded messages so the next
