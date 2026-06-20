@@ -913,6 +913,12 @@ async function loadSession(sid){
         if (Object.keys(f).length) _eph.set(_key, f);
       }
       _pendingCarryForwardSnapshots.set(currentSid, _eph);
+      // #4015: Also persist to sessionStorage so ephemeral fields survive
+      // a full page reload (the in-memory Map is lost on reload).
+      try {
+        const _ssKey = 'hermes-eph-' + currentSid;
+        sessionStorage.setItem(_ssKey, JSON.stringify([..._eph]));
+      } catch (_) { /* quota exceeded or private mode — non-fatal */ }
     }
     // #3239: also capture a reload-width hint BEFORE clearing so the
     // authoritative reload preserves the already-loaded transcript width
@@ -1913,7 +1919,16 @@ async function _ensureMessagesLoaded(sid) {
   // The original _carryForwardEphemeralTurnFields matches by identity key
   // (role|timestamp|content) — but frontend _ts ≠ server timestamp, so keys
   // never match across a session reload. This uses (role|content) instead.
-  const _eph = _pendingCarryForwardSnapshots.get(sid);
+  // Checks in-memory Map first, then falls back to sessionStorage (survives
+  // page reload where the in-memory Map is empty).
+  let _eph = _pendingCarryForwardSnapshots.get(sid);
+  if (!_eph || !_eph.size) {
+    try {
+      const _ssKey = 'hermes-eph-' + sid;
+      const _raw = sessionStorage.getItem(_ssKey);
+      if (_raw) _eph = new Map(JSON.parse(_raw));
+    } catch (_) { /* corrupted or missing — non-fatal */ }
+  }
   if (_eph && _eph.size) {
     for (const _m of msgs) {
       const _key = _ephContentKey(_m);
@@ -1928,7 +1943,7 @@ async function _ensureMessagesLoaded(sid) {
     }
   } else if (typeof window._carryForwardEphemeralTurnFields === 'function') {
     // Fallback: identity-key matching for force-reload / streaming paths
-    // where a positional snapshot wasn't saved by loadSession.
+    // where no content-key snapshot exists (in-memory or sessionStorage).
     const _prev = (S.messages || []);
     msgs = window._carryForwardEphemeralTurnFields(_prev, msgs);
   }
