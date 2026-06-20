@@ -3276,12 +3276,21 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
                 if(S.session&&Array.isArray(S.session.gateway_routing_history))S.session.gateway_routing_history.push(d.usage.gateway_routing);
                 else if(S.session)S.session.gateway_routing_history=[d.usage.gateway_routing];
               }
-              // #4015: Persist last turn's usage to sessionStorage so it
-              // survives page reload. Simple key: just the session ID,
-              // just the _turnUsage object from the last assistant message.
+              // #4015: Persist ALL _turnUsage values to localStorage so they
+              // survive page reload. Saves contentKey→_turnUsage for every
+              // assistant message that has usage data.
               try {
-                if (activeSid && lastAsst && lastAsst._turnUsage) {
-                  localStorage.setItem('hermes-usage-' + activeSid, JSON.stringify(lastAsst._turnUsage));
+                if (activeSid) {
+                  const _all = {};
+                  for (const _m of (S.messages || [])) {
+                    if (_m && _m._turnUsage && _m.role) {
+                      const _k = _m.role + '|' + (typeof _m.content === 'string' ? _m.content : '').slice(0, 160);
+                      if (_k && _k !== '|') _all[_k] = _m._turnUsage;
+                    }
+                  }
+                  if (Object.keys(_all).length) {
+                    localStorage.setItem('hermes-usage-' + activeSid, JSON.stringify(_all));
+                  }
                 }
               } catch (_) { /* quota exceeded or private mode — non-fatal */ }
             }
@@ -5204,17 +5213,22 @@ function startBackgroundPolling(parentSid, taskId, prompt){
   _poll();
 }
 
-// #4015: Save _turnUsage to localStorage on page unload so it survives
-// hard refresh / navigation. Belts-and-suspenders with the done-event save.
+// #4015: Save ALL _turnUsage values to localStorage on page unload so they
+// survive hard refresh / navigation. Stores a Map of contentKey→_turnUsage.
 window.addEventListener('beforeunload', function() {
   try {
     const _msgs = (typeof S !== 'undefined' && S.messages) ? S.messages : [];
-    for (let _i = _msgs.length - 1; _i >= 0; _i--) {
-      if (_msgs[_i] && _msgs[_i]._turnUsage) {
-        const _sid = (typeof S !== 'undefined' && S.session && S.session.session_id) || '';
-        if (_sid) localStorage.setItem('hermes-usage-' + _sid, JSON.stringify(_msgs[_i]._turnUsage));
-        break;
+    const _sid = (typeof S !== 'undefined' && S.session && S.session.session_id) || '';
+    if (!_sid || !_msgs.length) return;
+    const _all = {};
+    for (const _m of _msgs) {
+      if (_m && _m._turnUsage && _m.role) {
+        const _k = _m.role + '|' + (typeof _m.content === 'string' ? _m.content : '').slice(0, 160);
+        if (_k && _k !== '|') _all[_k] = _m._turnUsage;
       }
+    }
+    if (Object.keys(_all).length) {
+      localStorage.setItem('hermes-usage-' + _sid, JSON.stringify(_all));
     }
   } catch (_) {}
 });

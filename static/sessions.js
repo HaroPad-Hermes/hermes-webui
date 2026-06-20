@@ -1932,17 +1932,29 @@ async function _ensureMessagesLoaded(sid) {
       if (_f._statusCard != null && _m._statusCard == null) _m._statusCard = _f._statusCard;
     }
   } else {
-    // Try sessionStorage for page-reload survival
+    // Try localStorage for page-reload survival.
+    // Format: {contentKey: _turnUsage, ...} — maps multiple messages.
     let _restored = false;
     try {
       const _raw = localStorage.getItem('hermes-usage-' + sid);
       if (_raw) {
-        const _usage = JSON.parse(_raw);
-        for (let _i = msgs.length - 1; _i >= 0; _i--) {
-          if (msgs[_i].role === 'assistant' && msgs[_i]._turnUsage == null) {
-            msgs[_i]._turnUsage = _usage;
-            _restored = true;
-            break;
+        const _all = JSON.parse(_raw);
+        if (_all && typeof _all === 'object') {
+          // Backward-compat: old format was a single _turnUsage object
+          if ('input_tokens' in _all) {
+            for (let _i = msgs.length - 1; _i >= 0; _i--) {
+              if (msgs[_i].role === 'assistant' && msgs[_i]._turnUsage == null) {
+                msgs[_i]._turnUsage = _all; _restored = true; break;
+              }
+            }
+          } else {
+            // New format: {contentKey: _turnUsage, ...}
+            for (const _m of msgs) {
+              const _k = _ephContentKey(_m);
+              if (!_k || _m._turnUsage != null) continue;
+              const _u = _all[_k];
+              if (_u) { _m._turnUsage = _u; _restored = true; }
+            }
           }
         }
       }
