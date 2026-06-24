@@ -3240,6 +3240,24 @@ def _extract_tool_calls_from_messages(messages: list) -> list:
     for idx, msg in enumerate(messages):
         if not isinstance(msg, dict) or msg.get('role') != 'assistant':
             continue
+        # Anthropic-native format: tool_use blocks inside content list
+        content = msg.get('content')
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get('type') == 'tool_use':
+                    tid = part.get('id', '') or part.get('call_id', '')
+                    name = part.get('name', '')
+                    raw_input = part.get('input', {})
+                    if isinstance(raw_input, str):
+                        try:
+                            args = json.loads(raw_input or '{}')
+                        except Exception:
+                            args = {}
+                    else:
+                        args = raw_input if isinstance(raw_input, dict) else {}
+                    if tid and name:
+                        pending[tid] = {'name': name, 'args': args, 'idx': idx}
+        # OpenAI-compat format: tool_calls list with function envelope
         tcs = msg.get('tool_calls')
         if tcs is None:
             continue

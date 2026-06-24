@@ -8781,7 +8781,15 @@ function renderMessages(options){
     let _lastThinkingIdx=-1;
     for(let _ri=0;_ri<S.messages.length;_ri++){
       const _m=S.messages[_ri];
-      if(_m&&_m.role==='assistant'&&(_m.reasoning||_m.reasoning_content)&&!String(_m.content||'').trim()){
+      // Determine visible content: arrays (Anthropic format) must be flattened
+      // to text-only string before the empty check — String([ {type:'tool_use',...} ])
+      // is truthy ("[object Object]") so the original check missed Anthropic-format
+      // reasoning-only messages whose content is a tool_use block list with no text.
+      let _visibleContent=_m?_m.content:'';
+      if(Array.isArray(_visibleContent)){
+        _visibleContent=_visibleContent.filter(p=>p&&p.type==='text').map(p=>p.text||p.content||'').join('');
+      }
+      if(_m&&_m.role==='assistant'&&(_m.reasoning||_m.reasoning_content)&&!String(_visibleContent||'').trim()){
         _lastThinkingIdx=_ri;
       }
       _thinkingCardAnchor[_ri]=_lastThinkingIdx;

@@ -3312,19 +3312,14 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
               } catch (_) { /* quota exceeded or private mode — non-fatal */ }
             }
           }
-          const hasMessageToolMetadata=S.messages.some(m=>{
-            if(!m||m.role!=='assistant') return false;
-            const hasTc=Array.isArray(m.tool_calls)&&m.tool_calls.length>0;
-            const hasPartialTc=Array.isArray(m._partial_tool_calls)&&m._partial_tool_calls.length>0;
-            const hasTu=Array.isArray(m.content)&&m.content.some(p=>p&&p.type==='tool_use');
-            return hasTc||hasPartialTc||hasTu;
-          });
+          // Prefer session-level tool_calls (already flattened by backend) when available.
+          // If session.tool_calls is empty but messages contain provider-native tool
+          // metadata (OpenAI tool_calls or Anthropic tool_use), keep any live tool
+          // calls rather than wiping them — the per-message fallback in ui.js is
+          // disabled, so clearing here would lose all tool card rendering.
           if(d.session.tool_calls&&d.session.tool_calls.length){
             S.toolCalls=d.session.tool_calls.map(tc=>tc);
             S.toolCalls=_mergeSettledToolCallsWithLiveMetadata(d.session.tool_calls);
-          } else if(hasMessageToolMetadata){
-            S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
-            S.toolCalls=[];
           } else {
             S.toolCalls=S.toolCalls.map(tc=>({...tc,done:true}));
           }
@@ -3817,22 +3812,12 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
         }
         const _markerOnlyAssistantError=_replaceMarkerOnlyAssistantWithStreamError(S.messages);
         if(_markerOnlyAssistantError&&typeof showToast==='function') showToast('No response received after context compression. Please retry.',5000,'error');
-        const hasMessageToolMetadata=S.messages.some(m=>{
-          if(!m||m.role!=='assistant') return false;
-          // Recognize both the standard `tool_calls` (used by completed assistant
-          // turns where the LLM emitted tool_call entries) and the WebUI-internal
-          // `_partial_tool_calls` (used on Stop/Cancel partial messages — see
-          // api/streaming.py cancel_stream).
-          const hasTc=Array.isArray(m.tool_calls)&&m.tool_calls.length>0;
-          const hasPartialTc=Array.isArray(m._partial_tool_calls)&&m._partial_tool_calls.length>0;
-          const hasTu=Array.isArray(m.content)&&m.content.some(p=>p&&p.type==='tool_use');
-          return hasTc||hasPartialTc||hasTu;
-        });
+        // Prefer session-level tool_calls (already flattened by backend) when available.
+        // If session.tool_calls is empty but messages contain provider-native tool
+        // metadata, keep live tool calls rather than wiping them — the per-message
+        // fallback in ui.js is disabled, so clearing here would lose all tool cards.
         if(session.tool_calls&&session.tool_calls.length){
           S.toolCalls=_mergeSettledToolCallsWithLiveMetadata(session.tool_calls||[]);
-        }else if(hasMessageToolMetadata){
-          S._settledLiveToolMetadata=S.toolCalls.map(tc=>({...tc,done:true}));
-          S.toolCalls=[];
         }else{
           S.toolCalls=S.toolCalls.map(tc=>({...tc,done:true}));
         }
