@@ -191,13 +191,33 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 from api.auth import check_auth
-from api.config import HOST, PORT, STATE_DIR, SESSION_DIR, DEFAULT_WORKSPACE
+from api.config import HOST, PORT, STATE_DIR, SESSION_DIR, DEFAULT_WORKSPACE, _discover_agent_dir
 from api.helpers import (
     j,
     get_profile_cookie,
     _build_csp_report_only_policy,
     _CLIENT_DISCONNECT_ERRORS,
 )
+
+# Ensure the gateway/agent source tree is on sys.path so cron.jobs and
+# other Hermes modules are importable from the WebUI process.
+_AGENT_DIR = _discover_agent_dir()
+_startup_log = os.path.join(STATE_DIR, "startup.log")
+with open(_startup_log, "w") as _sf:
+    _sf.write(f"_discover_agent_dir() = {_AGENT_DIR}\n")
+    _sf.write(f"HERMES_HOME = {os.getenv('HERMES_HOME', 'not set')}\n")
+    _sf.write(f"LOCALAPPDATA = {os.getenv('LOCALAPPDATA', 'not set')}\n")
+if _AGENT_DIR:
+    _agent_str = str(_AGENT_DIR)
+    if _agent_str not in sys.path:
+        sys.path.insert(0, _agent_str)
+        with open(_startup_log, "a") as _sf:
+            _sf.write(f"Added to sys.path: {_agent_str}\n")
+            _sf.write(f"cron/jobs.py exists: {(Path(_agent_str) / 'cron' / 'jobs.py').exists()}\n")
+else:
+    with open(_startup_log, "a") as _sf:
+        _sf.write("WARNING: _discover_agent_dir() returned None!\n")
+
 from api.profiles import set_request_profile, clear_request_profile
 from api.routes import handle_delete, handle_get, handle_patch, handle_post, handle_put
 from api.startup import auto_install_agent_deps, fix_credential_permissions

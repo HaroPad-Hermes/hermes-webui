@@ -9908,16 +9908,16 @@ function appendLiveToolCard(tc){
   if(tid){
     const existing=group.querySelector(`.tool-card-row[data-live-tid="${CSS.escape(tid)}"]`);
     if(existing){
-      // Save scroll position of the current pre element
-      const oldPre=existing.querySelector('.tool-card-result pre');
-      const scrollTop=oldPre?oldPre.scrollTop:0;
+      // Save scroll position of the current detail container
+      const oldDetail=existing.querySelector('.tool-card-detail');
+      const scrollTop=oldDetail?oldDetail.scrollTop:0;
       const replacement=buildToolCard(tc);
       replacement.dataset.liveTid=tid;
       existing.replaceWith(replacement);
-      // Restore scroll position on the new pre element
-      if(oldPre){
-        const newPre=replacement.querySelector('.tool-card-result pre');
-        if(newPre) newPre.scrollTop=scrollTop;
+      // Restore scroll position on the new detail container
+      if(oldDetail && scrollTop>0){
+        const newDetail=replacement.querySelector('.tool-card-detail');
+        if(newDetail) newDetail.scrollTop=scrollTop;
       }
       _syncToolCallGroupSummary(group);
       _moveLiveRunStatusToTurnEnd();

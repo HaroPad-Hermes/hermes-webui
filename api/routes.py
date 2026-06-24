@@ -6802,11 +6802,38 @@ def handle_get(handler, parsed) -> bool:
     # os.environ (process-global) at call time. Wrap in cron_profile_context
     # so the TLS-active profile's jobs.json is read, not the process default.
     if parsed.path == "/api/crons":
-        from cron.jobs import list_jobs
-        from api.profiles import cron_profile_context
+        try:
+            # Diagnostic: try importing cron package first, then submodule
+            import cron as _cron_pkg
+            from cron.jobs import list_jobs
+            from api.profiles import cron_profile_context
 
-        with cron_profile_context():
-            return j(handler, {"jobs": _cron_jobs_for_api(list_jobs(include_disabled=True))})
+            with cron_profile_context():
+                return j(handler, {"jobs": _cron_jobs_for_api(list_jobs(include_disabled=True))})
+        except ModuleNotFoundError:
+            import traceback
+            # Try to figure out which module is missing
+            log_path = Path(os.path.expanduser("~/.hermes/webui-win")) / "cron_error.log"
+            with open(log_path, "a") as lf:
+                lf.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CRON_ERROR: No module named 'cron.jobs'\n")
+                lf.write(f"sys.path (first 20):\n")
+                for i, p in enumerate(sys.path[:20]):
+                    lf.write(f"  [{i}] {p}\n")
+                # Check if cron package can be found at all
+                import importlib.util
+                cron_spec = importlib.util.find_spec("cron")
+                lf.write(f"find_spec('cron'): {cron_spec}\n")
+                jobs_spec = importlib.util.find_spec("cron.jobs")
+                lf.write(f"find_spec('cron.jobs'): {jobs_spec}\n")
+                lf.write(traceback.format_exc() + "\n")
+            raise
+        except Exception as e:
+            import traceback
+            log_path = Path(os.path.expanduser("~/.hermes/webui-win")) / "cron_error.log"
+            with open(log_path, "a") as lf:
+                lf.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] CRON_ERROR: {e}\n")
+                lf.write(traceback.format_exc() + "\n")
+            raise
 
     if parsed.path == "/api/crons/output":
         from api.profiles import cron_profile_context
