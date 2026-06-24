@@ -3230,7 +3230,15 @@ function attachLiveStream(activeSid, streamId, uploaded=[], options={}){
           const lastAsst=[...S.messages].reverse().find(m=>m.role==='assistant');
           // Persist reasoning trace for Worklog Thinking Cards; normal transcript
           // rendering keeps provider reasoning out of the final answer.
-          if(reasoningText&&lastAsst&&!lastAsst.reasoning) lastAsst.reasoning=reasoningText;
+          // Only apply the client-side reasoningText fallback when NO assistant
+          // message in this turn already has server-stored reasoning. The server
+          // stores reasoning per-message via _reasoning_segments (#3587), so if any
+          // earlier message has m.reasoning, the accumulated reasoningText was likely
+          // from that message — dumping it onto lastAsst duplicates it.
+          if(reasoningText&&lastAsst&&!lastAsst.reasoning){
+            const _anyServerReasoning=S.messages.some(m=>m&&m.role==='assistant'&&(m.reasoning||m.reasoning_content));
+            if(!_anyServerReasoning) lastAsst.reasoning=reasoningText;
+          }
           // Strip any inline <think> blocks still embedded in the server-side
           // content (M3 OpenAI-compat doesn't separate reasoning). Move them
           // to m.reasoning so the persisted session stays compact and the
