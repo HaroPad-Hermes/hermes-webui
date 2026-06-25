@@ -8927,8 +8927,10 @@ function renderMessages(options){
         seenTools:state.seenTools,
       });
       _syncToolCallGroupSummary(state.group);
-      // Remove empty groups that only had thinking (no tool cards).
-      if(!state.group.querySelector('.tool-card-row')){
+      // Remove empty groups that had no thinking AND no tool cards.
+      // Keep groups that have a thinking card even without tool cards —
+      // the thinking content is meaningful and should be visible.
+      if(!state.group.querySelector('.tool-card-row')&&!state.group.querySelector('.thinking-card')&&!state.group.querySelector('.wl-reason')){
         state.group.remove();
       }
       continue;

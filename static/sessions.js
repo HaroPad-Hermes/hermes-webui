@@ -2450,7 +2450,14 @@ async function _loadOlderMessages() {
       }
     }
     S.messages = nextMessages;
-    _syncToolCallsForLoadedMessages(nextMessages, responseSession.tool_calls);
+    // Use session-level tool_calls from the API response. If missing or empty
+    // (edge case with certain pagination paths), fall back to the previous
+    // S.toolCalls — the render wasn't broken before the load, and clearing
+    // here would lose all tool card rendering for already-visible messages.
+    const _olderTcs = responseSession.tool_calls;
+    if(Array.isArray(_olderTcs) && _olderTcs.length){
+      _syncToolCallsForLoadedMessages(nextMessages, _olderTcs);
+    }
     // renderMessages() windows long transcripts from the end. If we do not
     // expand that window before rendering, the newly prepended page stays
     // hidden and the "hidden" counter rises while the viewport appears stuck.
