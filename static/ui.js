@@ -8789,15 +8789,17 @@ function renderMessages(options){
       if(Array.isArray(_visibleContent)){
         _visibleContent=_visibleContent.filter(p=>p&&p.type==='text').map(p=>p.text||p.content||'').join('');
       }
-      // A message is a thinking anchor when:
+      // A message is a thinking/activity anchor when:
       // (a) It has reasoning AND no visible content (reasoning-only message), OR
-      // (b) It has reasoning AND tool_calls (the model thought before calling tools).
-      // Without (b), providers like GLM 5.2 that send reasoning alongside content
-      // produce very few reasoning-only messages, causing all tool calls to pool
-      // under one stale anchor instead of distributing across their turns.
+      // (b) It has reasoning AND tool_calls (the model thought before calling tools), OR
+      // (c) It has tool_calls but no reasoning (tools without thinking).
+      // Without (c), tool calls from messages without reasoning get grouped
+      // under a stale thinking anchor from a distant previous turn.
       const _hasTc=_m&&_m.role==='assistant'&&Array.isArray(_m.tool_calls)&&_m.tool_calls.length>0;
       if(_m&&_m.role==='assistant'&&(_m.reasoning||_m.reasoning_content)&&
         (!String(_visibleContent||'').trim()||_hasTc)){
+        _lastThinkingIdx=_ri;
+      }else if(_hasTc){
         _lastThinkingIdx=_ri;
       }
       _thinkingCardAnchor[_ri]=_lastThinkingIdx;
